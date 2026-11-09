@@ -1,0 +1,6 @@
+{
+  "routes": [
+    { "path": "/", "title": "FoundIt Board" },
+    { "path": "/reports/:id", "title": "FoundIt Report" }
+  ]
+}
