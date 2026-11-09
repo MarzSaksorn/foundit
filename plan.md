@@ -3,6 +3,9 @@
 ## Product slice
 FoundIt is a single-school lost-and-found board for students and teachers. The first implementation delivers a polished board, seeded report data, report detail and claim surfaces, and a teacher moderation view. The UI keeps private claim details and contact information out of public cards. Supabase integration stays behind typed service seams so the deterministic interface can be connected without changing the visual structure.
 
+## Pilot decisions
+The pilot school is Phichai School. Sign-in will use Google accounts restricted to the `@phichai.ac.th` domain. Any teacher can moderate reports, with moderator and admin roles available for broader school administration. Missing reports publish immediately; found reports enter teacher review. Default storage options are Front office shelf A with the school admin, Library desk with the librarian, and Gym office with the PE teacher. Keep unresolved lost-and-found records for one month and resolved reports for one week.
+
 ## Design direction: Community Pinboard
 - **Design movement:** Friendly digital noticeboard with softly layered cards, pin-and-label motifs, and restrained playful accents.
 - **Core principles:** Scan first; keep trust visible; use warmth without clutter; make next steps obvious.

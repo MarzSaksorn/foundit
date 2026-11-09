@@ -96,7 +96,7 @@ function App() {
           <div className="brand-mark">F<span>●</span></div>
           <div>
             <div className="brand-name">Found<span>It</span></div>
-            <div className="brand-school">Northbridge School</div>
+            <div className="brand-school">Phichai School</div>
           </div>
         </div>
 
@@ -130,7 +130,7 @@ function App() {
 
       <main className="main-content">
         <header className="topbar">
-          <div className="breadcrumbs"><span>Northbridge School</span><span className="crumb-slash">/</span><strong>{view === 'board' ? 'Community board' : 'Teacher moderation'}</strong></div>
+          <div className="breadcrumbs"><span>Phichai School</span><span className="crumb-slash">/</span><strong>{view === 'board' ? 'Community board' : 'Teacher moderation'}</strong></div>
           <div className="topbar-actions"><span className="saved-note"><span className="online-dot" />Seeded demo data</span><button className="help-button">?</button><button className="avatar mini">MR</button></div>
         </header>
 
@@ -139,7 +139,7 @@ function App() {
         {selectedReport && <ReportDetail report={selectedReport} onBack={() => setSelectedId(null)} onClaim={() => setClaimOpen(true)} onUpdate={updateReport} showToast={showToast} />}
       </main>
 
-      {composerOpen && <ReportComposer type={composerType} onClose={() => setComposerOpen(false)} onSubmitted={(report) => { setReports((current) => [report, ...current]); setComposerOpen(false); showToast('Report saved. A teacher will review it shortly.'); }} />}
+      {composerOpen && <ReportComposer type={composerType} onClose={() => setComposerOpen(false)} onSubmitted={(report) => { setReports((current) => [report, ...current]); setComposerOpen(false); showToast(report.status === 'approved' ? 'Missing report published to the board.' : 'Found report saved. A teacher will review it shortly.'); }} />}
       {claimOpen && selectedReport && <ClaimModal report={selectedReport} onClose={() => setClaimOpen(false)} onSubmitted={() => { updateReport(selectedReport.id, { status: 'claimed', claimCount: (selectedReport.claimCount || 0) + 1 }); setClaimOpen(false); showToast('Claim sent privately to the teacher.'); }} />}
       {toast && <div className="toast" role="status"><span className="toast-check"><Icon name="check" size={14} /></span>{toast}</div>}
     </div>
@@ -204,8 +204,8 @@ function ReportComposer({ type, onClose, onSubmitted }: { type: ReportType; onCl
   const [location, setLocation] = useState('Main hallway');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState('');
-  const [storageLocation, setStorageLocation] = useState('Front office, shelf B');
-  const [responsiblePerson, setResponsiblePerson] = useState('Ms. Rivera');
+  const [storageLocation, setStorageLocation] = useState('Front office shelf A');
+  const [responsiblePerson, setResponsiblePerson] = useState('School admin');
   const [photoName, setPhotoName] = useState('');
   const [error, setError] = useState('');
   const isFound = draftType === 'found';
@@ -215,7 +215,7 @@ function ReportComposer({ type, onClose, onSubmitted }: { type: ReportType; onCl
       setError('Add the required item, date, location, and description details before sending.');
       return;
     }
-    onSubmitted({ id: `r-${Date.now()}`, type: draftType, title, category, description, dateLabel: isFound ? `Found ${date}` : `Last seen ${date}`, location, storageLocation: isFound ? storageLocation : undefined, responsiblePerson: isFound ? responsiblePerson : undefined, status: 'pending', ageDays: 0, createdLabel: 'Today', createdBy: 'Signed-in student', initials: 'SS', color: isFound ? '#c4e3aa' : '#f3b6aa', hasPhoto: Boolean(photoName) });
+    onSubmitted({ id: `r-${Date.now()}`, type: draftType, title, category, description, dateLabel: isFound ? `Found ${date}` : `Last seen ${date}`, location, storageLocation: isFound ? storageLocation : undefined, responsiblePerson: isFound ? responsiblePerson : undefined, status: isFound ? 'pending' : 'approved', ageDays: 0, createdLabel: 'Today', createdBy: 'Signed-in student', initials: 'SS', color: isFound ? '#c4e3aa' : '#f3b6aa', hasPhoto: Boolean(photoName) });
   };
   const choosePhoto = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
