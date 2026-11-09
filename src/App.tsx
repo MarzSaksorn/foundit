@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent, FormEvent, ReactNode } from 'react';
+import type { User } from '@supabase/supabase-js';
 import {
   categories,
   filterReports,
@@ -11,6 +12,8 @@ import {
   type ReportStatus,
   type ReportType,
 } from './lib/reports';
+import { PHICHAI_DOMAIN, PHICHAI_SCHOOL, signInWithGoogle, validateSchoolUser } from './lib/auth';
+import { isSupabaseConfigured, supabase } from './lib/supabase';
 
 type View = 'board' | 'moderation';
 
@@ -52,6 +55,58 @@ const statusTone: Record<ReportStatus, string> = {
 };
 
 function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
+  const [authError, setAuthError] = useState('');
+
+  useEffect(() => {
+    if (!supabase) {
+      setAuthLoading(false);
+      return;
+    }
+
+    let active = true;
+    const syncUser = async (candidate: User | null) => {
+      const result = await validateSchoolUser(candidate);
+      if (!active) return;
+      setUser(result.user);
+      setAuthLoading(false);
+      if (!result.allowed && candidate) setAuthError(`Use a Google account ending in @${PHICHAI_DOMAIN}.`);
+    };
+
+    void supabase.auth.getSession().then(({ data }) => syncUser(data.session?.user ?? null));
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      window.setTimeout(() => { void syncUser(session?.user ?? null); }, 0);
+    });
+    return () => { active = false; authListener.subscription.unsubscribe(); };
+  }, []);
+
+  if (!isSupabaseConfigured) return <AppShell />;
+  if (authLoading) return <AuthLoading />;
+  if (!user) return <SignInScreen error={authError} />;
+  return <AppShell user={user} />;
+}
+
+function AuthLoading() {
+  return <main className="auth-screen"><div className="auth-card"><div className="brand-mark">F<span>●</span></div><h1>Checking your school account</h1><p>FoundIt is confirming your Phichai School session.</p></div></main>;
+}
+
+function SignInScreen({ error }: { error: string }) {
+  const [signInError, setSignInError] = useState(error);
+  const [signingIn, setSigningIn] = useState(false);
+  const handleSignIn = async () => {
+    setSigningIn(true);
+    setSignInError('');
+    const { error: oauthError } = await signInWithGoogle();
+    if (oauthError) {
+      setSignInError(oauthError.message);
+      setSigningIn(false);
+    }
+  };
+  return <main className="auth-screen"><div className="auth-card"><div className="brand-lockup auth-brand"><div className="brand-mark">F<span>●</span></div><div><div className="brand-name">Found<span>It</span></div><div className="brand-school">{PHICHAI_SCHOOL}</div></div></div><div className="eyebrow"><span className="eyebrow-line" />School community</div><h1>Find it.<br /><em>Bring it home.</em></h1><p className="auth-copy">Sign in with your Phichai School Google account to browse reports, share a missing item, or send a private claim.</p><button className="button primary full auth-button" onClick={() => void handleSignIn()} disabled={signingIn}>{signingIn ? 'Opening Google…' : 'Continue with Google'}</button><p className="auth-domain">Only <strong>@{PHICHAI_DOMAIN}</strong> accounts can access FoundIt.</p>{signInError && <div className="form-error" role="alert">{signInError}</div>}</div></main>;
+}
+
+function AppShell({ user }: { user?: User }) {
   const [view, setView] = useState<View>('board');
   const [reports, setReports] = useState<Report[]>(initialReports);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -123,7 +178,7 @@ function App() {
           </div>
           <button className="nav-item muted"><Icon name="settings" /><span>School settings</span></button>
           <div className="account-row">
-            <div className="avatar">MR</div><div className="account-copy"><strong>Ms. Rivera</strong><span>Teacher · Northbridge</span></div><button className="more-button" aria-label="Account menu">•••</button>
+            <div className="avatar">{user ? (user.email?.slice(0, 2).toUpperCase() || 'PS') : 'MR'}</div><div className="account-copy"><strong>{user?.user_metadata?.full_name || user?.email || 'Ms. Rivera'}</strong><span>{user ? `Member · ${PHICHAI_SCHOOL}` : 'Teacher · Phichai'}</span></div><button className="more-button" aria-label="Account menu">•••</button>
           </div>
         </div>
       </aside>
