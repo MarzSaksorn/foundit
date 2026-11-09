@@ -13,6 +13,7 @@ import {
   type ReportType,
 } from './lib/reports';
 import { PHICHAI_DOMAIN, PHICHAI_SCHOOL, signInWithGoogle, validateSchoolUser } from './lib/auth';
+import { fetchLiveReports } from './lib/live-reports';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 
 type View = 'board' | 'moderation';
@@ -108,7 +109,10 @@ function SignInScreen({ error }: { error: string }) {
 
 function AppShell({ user }: { user?: User }) {
   const [view, setView] = useState<View>('board');
-  const [reports, setReports] = useState<Report[]>(initialReports);
+  const [reports, setReports] = useState<Report[]>(isSupabaseConfigured ? [] : initialReports);
+  const [reportsLoading, setReportsLoading] = useState(isSupabaseConfigured);
+  const [reportsError, setReportsError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerType, setComposerType] = useState<ReportType>('missing');
@@ -125,6 +129,18 @@ function AppShell({ user }: { user?: User }) {
     const match = window.location.pathname.match(/^\/reports\/(.+)$/);
     if (match) setSelectedId(decodeURIComponent(match[1]));
   }, []);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !user) return;
+    let active = true;
+    setReportsLoading(true);
+    setReportsError(null);
+    void fetchLiveReports()
+      .then((nextReports) => { if (active) setReports(nextReports); })
+      .catch(() => { if (active) setReportsError('We couldn’t load the live board. Check your connection and try again.'); })
+      .finally(() => { if (active) setReportsLoading(false); });
+    return () => { active = false; };
+  }, [user?.id, reloadKey]);
 
   const updateFilter = (key: keyof typeof filters, value: string) => {
     setFilters((current) => ({ ...current, [key]: value }));
@@ -186,10 +202,12 @@ function AppShell({ user }: { user?: User }) {
       <main className="main-content">
         <header className="topbar">
           <div className="breadcrumbs"><span>Phichai School</span><span className="crumb-slash">/</span><strong>{view === 'board' ? 'Community board' : 'Teacher moderation'}</strong></div>
-          <div className="topbar-actions"><span className="saved-note"><span className="online-dot" />Seeded demo data</span><button className="help-button">?</button><button className="avatar mini">MR</button></div>
+          <div className="topbar-actions"><span className="saved-note"><span className="online-dot" />{isSupabaseConfigured ? 'Live Supabase data' : 'Seeded demo data'}</span><button className="help-button">?</button><button className="avatar mini">{user ? (user.email?.slice(0, 2).toUpperCase() || 'PS') : 'MR'}</button></div>
         </header>
 
-        {view === 'board' && !selectedReport && <BoardView reports={filteredReports} total={reports.length} filters={filters} updateFilter={updateFilter} onOpenReport={setSelectedId} onOpenComposer={openComposer} />}
+        {view === 'board' && !selectedReport && reportsLoading && <BoardLoading />}
+        {view === 'board' && !selectedReport && !reportsLoading && reportsError && <BoardError onRetry={() => setReloadKey((key) => key + 1)} />}
+        {view === 'board' && !selectedReport && !reportsLoading && !reportsError && <BoardView reports={filteredReports} total={reports.length} filters={filters} updateFilter={updateFilter} onOpenReport={setSelectedId} onOpenComposer={openComposer} />}
         {view === 'moderation' && !selectedReport && <ModerationView reports={reports} onOpenReport={setSelectedId} onUpdateReport={updateReport} />}
         {selectedReport && <ReportDetail report={selectedReport} onBack={() => setSelectedId(null)} onClaim={() => setClaimOpen(true)} onUpdate={updateReport} showToast={showToast} />}
       </main>
@@ -201,6 +219,14 @@ function AppShell({ user }: { user?: User }) {
   );
 }
 
+function BoardLoading() {
+  return <section className="board-page board-state"><div className="loading-pulse" /><div className="loading-pulse short" /><h2>Loading the school board…</h2><p>Finding the latest approved reports from Phichai School.</p></section>;
+}
+
+function BoardError({ onRetry }: { onRetry: () => void }) {
+  return <section className="board-page board-state"><div className="empty-pin"><Icon name="close" size={25} /></div><h2>We couldn’t load the board.</h2><p>The live report service didn’t respond. Your account is still signed in.</p><button className="button secondary" onClick={onRetry}>Try again</button></section>;
+}
+
 function BoardView({ reports, total, filters, updateFilter, onOpenReport, onOpenComposer }: { reports: Report[]; total: number; filters: { query: string; type: 'all' | ReportType; category: string; location: string; status: 'all' | ReportStatus; date: 'all' | 'week' | 'older' }; updateFilter: (key: 'query' | 'type' | 'category' | 'location' | 'status' | 'date', value: string) => void; onOpenReport: (id: string) => void; onOpenComposer: (type: ReportType) => void }) {
   return (
     <section className="board-page">
@@ -208,7 +234,7 @@ function BoardView({ reports, total, filters, updateFilter, onOpenReport, onOpen
         <div>
           <div className="eyebrow"><span className="eyebrow-line" />Community board</div>
           <h1>Look for it.<br /><em>Leave a lead.</em></h1>
-          <p className="lede">A shared place for Northbridge to reconnect lost things with their people.</p>
+          <p className="lede">A shared place for Phichai School to reconnect lost things with their people.</p>
         </div>
         <div className="heading-actions"><button className="button secondary" onClick={() => onOpenComposer('missing')}><Icon name="plus" size={16} /> Report missing</button><button className="button primary" onClick={() => onOpenComposer('found')}><Icon name="plus" size={16} /> Report found</button></div>
       </div>
