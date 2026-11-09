@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent, FormEvent, ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { Button, Card } from '@heroui/react';
+import { Button, Card, ListBox, Select } from '@heroui/react';
 import {
   categories,
   filterReports,
@@ -228,6 +228,13 @@ function BoardError({ onRetry }: { onRetry: () => void }) {
   return <section className="board-page board-state"><div className="empty-pin"><Icon name="close" size={25} /></div><h2>We couldn’t load the board.</h2><p>The live report service didn’t respond. Your account is still signed in.</p><Button className="button secondary" variant="secondary" size="sm" onPress={onRetry}>Try again</Button></section>;
 }
 
+function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: { id: string; label: string }[]; onChange: (value: string) => void }) {
+  return <Select aria-label={label} className="filter-select" value={value} onChange={(nextValue) => onChange(String(nextValue))}>
+    <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
+    <Select.Popover><ListBox>{options.map((option) => <ListBox.Item key={option.id} id={option.id} textValue={option.label}>{option.label}<ListBox.ItemIndicator /></ListBox.Item>)}</ListBox></Select.Popover>
+  </Select>;
+}
+
 function BoardView({ reports, total, filters, updateFilter, onOpenReport, onOpenComposer }: { reports: Report[]; total: number; filters: { query: string; type: 'all' | ReportType; category: string; location: string; status: 'all' | ReportStatus; date: 'all' | 'week' | 'older' }; updateFilter: (key: 'query' | 'type' | 'category' | 'location' | 'status' | 'date', value: string) => void; onOpenReport: (id: string) => void; onOpenComposer: (type: ReportType) => void }) {
   return (
     <section className="board-page">
@@ -244,7 +251,7 @@ function BoardView({ reports, total, filters, updateFilter, onOpenReport, onOpen
 
       <div className="board-toolbar">
         <div className="search-wrap"><Icon name="search" size={19} /><input aria-label="Search reports" placeholder="Search by item or description" value={filters.query} onChange={(event) => updateFilter('query', event.target.value)} /></div>
-        <div className="filter-group"><select aria-label="Filter by type" value={filters.type} onChange={(event) => updateFilter('type', event.target.value)}><option value="all">All types</option><option value="missing">Missing</option><option value="found">Found</option></select><select aria-label="Filter by category" value={filters.category} onChange={(event) => updateFilter('category', event.target.value === 'All categories' ? 'all' : event.target.value)}>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select><select aria-label="Filter by location" value={filters.location} onChange={(event) => updateFilter('location', event.target.value === 'All locations' ? 'all' : event.target.value)}>{locations.map((location) => <option key={location} value={location}>{location}</option>)}</select><select aria-label="Filter by date" value={filters.date} onChange={(event) => updateFilter('date', event.target.value)}><option value="all">Any date</option><option value="week">Past week</option><option value="older">Older</option></select><select aria-label="Filter by status" value={filters.status} onChange={(event) => updateFilter('status', event.target.value)}><option value="all">Live only</option><option value="pending">Pending</option><option value="claimed">Claimed</option><option value="returned">Returned</option></select><button className="filter-icon-button" aria-label="More filters"><Icon name="filter" size={17} /></button></div>
+        <div className="filter-group"><FilterSelect label="Filter by type" value={filters.type} options={[{ id: 'all', label: 'All types' }, { id: 'missing', label: 'Missing' }, { id: 'found', label: 'Found' }]} onChange={(value) => updateFilter('type', value)} /><FilterSelect label="Filter by category" value={filters.category} options={categories.map((category) => ({ id: category === 'All categories' ? 'all' : category, label: category }))} onChange={(value) => updateFilter('category', value)} /><FilterSelect label="Filter by location" value={filters.location} options={locations.map((location) => ({ id: location === 'All locations' ? 'all' : location, label: location }))} onChange={(value) => updateFilter('location', value)} /><FilterSelect label="Filter by date" value={filters.date} options={[{ id: 'all', label: 'Any date' }, { id: 'week', label: 'Past week' }, { id: 'older', label: 'Older' }]} onChange={(value) => updateFilter('date', value)} /><FilterSelect label="Filter by status" value={filters.status} options={[{ id: 'all', label: 'Live only' }, { id: 'pending', label: 'Pending' }, { id: 'claimed', label: 'Claimed' }, { id: 'returned', label: 'Returned' }]} onChange={(value) => updateFilter('status', value)} /><button className="filter-icon-button" aria-label="More filters"><Icon name="filter" size={17} /></button></div>
       </div>
 
       <div className="board-section-header"><div><h2>Active reports <span>{reports.length}</span></h2><p>Approved and unresolved items from your school community.</p></div><div className="legend"><span><i className="legend-dot found" />Found</span><span><i className="legend-dot missing" />Missing</span></div></div>
