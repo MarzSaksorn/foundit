@@ -11,7 +11,7 @@ FoundIt is a single-school lost-and-found board for students and teachers. The f
 - **Signature elements:** Pin dots on report cards, small paper-label chips, and a stitched dashed divider for the board header.
 - **Interaction philosophy:** Every action answers “what happens next?” Filters update immediately; cards reveal more context on hover/focus; teacher actions stay grouped in the moderation rail.
 - **Animation:** Use short ease-out fades and 2–4px lifts on hover. Avoid continuous motion. Respect reduced-motion preferences.
-- **Typography system:** Nunito Sans for interface text, with heavy display weights for page titles and compact uppercase labels for metadata. Keep body copy at readable 15–16px sizes.
+- **Typography system:** Josefin Sans for display text and Lato for body/interface text, with heavy display weights for page titles and compact uppercase labels for metadata. Keep body copy at readable 15–16px sizes.
 - **Brand essence:** A school-wide board that turns “maybe someone found it” into a clear next step. Personality: caring, organized, practical.
 - **Brand voice:** Direct, reassuring, and human. Example lines: “Look for it. Leave a lead.” and “Your claim stays private until a teacher reviews it.”
 - **Wordmark & logo:** The “o” in FoundIt becomes a small pin head with a short trailing stem, echoed in the board’s pin markers.
