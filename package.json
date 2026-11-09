@@ -9,10 +9,15 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
+    "@heroui/react": "^3.2.7",
+    "@heroui/styles": "^3.2.7",
     "@supabase/supabase-js": "^2.119.0",
+    "@tailwindcss/vite": "^4.3.5",
     "@vitejs/plugin-react": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "tailwind-variants": "^4.0.1",
+    "tailwindcss": "^4.3.5",
     "typescript": "latest",
     "vite": "latest"
   },

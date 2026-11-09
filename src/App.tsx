@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent, FormEvent, ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
+import { Button, Card } from '@heroui/react';
 import {
   categories,
   filterReports,
@@ -224,7 +225,7 @@ function BoardLoading() {
 }
 
 function BoardError({ onRetry }: { onRetry: () => void }) {
-  return <section className="board-page board-state"><div className="empty-pin"><Icon name="close" size={25} /></div><h2>We couldn’t load the board.</h2><p>The live report service didn’t respond. Your account is still signed in.</p><button className="button secondary" onClick={onRetry}>Try again</button></section>;
+  return <section className="board-page board-state"><div className="empty-pin"><Icon name="close" size={25} /></div><h2>We couldn’t load the board.</h2><p>The live report service didn’t respond. Your account is still signed in.</p><Button className="button secondary" variant="secondary" size="sm" onPress={onRetry}>Try again</Button></section>;
 }
 
 function BoardView({ reports, total, filters, updateFilter, onOpenReport, onOpenComposer }: { reports: Report[]; total: number; filters: { query: string; type: 'all' | ReportType; category: string; location: string; status: 'all' | ReportStatus; date: 'all' | 'week' | 'older' }; updateFilter: (key: 'query' | 'type' | 'category' | 'location' | 'status' | 'date', value: string) => void; onOpenReport: (id: string) => void; onOpenComposer: (type: ReportType) => void }) {
@@ -236,7 +237,7 @@ function BoardView({ reports, total, filters, updateFilter, onOpenReport, onOpen
           <h1>Look for it.<br /><em>Leave a lead.</em></h1>
           <p className="lede">A shared place for Phichai School to reconnect lost things with their people.</p>
         </div>
-        <div className="heading-actions"><button className="button secondary" onClick={() => onOpenComposer('missing')}><Icon name="plus" size={16} /> Report missing</button><button className="button primary" onClick={() => onOpenComposer('found')}><Icon name="plus" size={16} /> Report found</button></div>
+        <div className="heading-actions"><Button className="button secondary" variant="secondary" size="sm" onPress={() => onOpenComposer('missing')}><Icon name="plus" size={16} /> Report missing</Button><Button className="button primary" variant="primary" size="sm" onPress={() => onOpenComposer('found')}><Icon name="plus" size={16} /> Report found</Button></div>
       </div>
 
       <div className="board-stats"><div className="stat-block"><strong>{total}</strong><span>total reports</span></div><div className="stat-divider" /><div className="stat-block"><strong>{reports.filter((report) => report.type === 'found').length}</strong><span>found items</span></div><div className="stat-divider" /><div className="stat-block"><strong>{reports.filter((report) => report.type === 'missing').length}</strong><span>still missing</span></div><div className="stat-callout"><Icon name="spark" size={17} /><span><strong>3 items</strong> found their way home this week</span></div></div>
@@ -253,14 +254,14 @@ function BoardView({ reports, total, filters, updateFilter, onOpenReport, onOpen
 }
 
 function ReportCard({ report, onOpen }: { report: Report; onOpen: () => void }) {
-  return <article className="report-card" onClick={onOpen} tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onOpen(); }}>
+  return <Card className="report-card" variant="default" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onOpen(); }}>
     <div className="card-visual" style={{ background: report.color }}><div className="visual-lines" /><span className={`type-pill ${report.type}`}>{typeCopy[report.type].label}</span>{report.hasPhoto && <span className="photo-label">Photo</span>}<span className="pin"><span /></span></div>
-    <div className="card-body"><div className="card-topline"><span className="category-label">{report.category}</span><span className="card-date">{report.dateLabel}</span></div><h3>{report.title}</h3><p>{report.description}</p><div className="card-footer"><span className="location"><Icon name="pin" size={14} />{report.location}</span><span className="card-arrow"><Icon name="arrow" size={15} /></span></div></div>
-  </article>;
+    <Card.Content className="card-body"><div className="card-topline"><span className="category-label">{report.category}</span><span className="card-date">{report.dateLabel}</span></div><h3>{report.title}</h3><p>{report.description}</p><div className="card-footer"><span className="location"><Icon name="pin" size={14} />{report.location}</span><span className="card-arrow"><Icon name="arrow" size={15} /></span></div></Card.Content>
+  </Card>;
 }
 
 function EmptyState({ onClear }: { onClear: () => void }) {
-  return <div className="empty-state"><div className="empty-pin"><Icon name="search" size={25} /></div><h3>No reports match that search.</h3><p>Try a wider search or clear your filters to see the full board.</p><button className="button secondary" onClick={onClear}>Clear filters</button></div>;
+  return <div className="empty-state"><div className="empty-pin"><Icon name="search" size={25} /></div><h3>No reports match that search.</h3><p>Try a wider search or clear your filters to see the full board.</p><Button className="button secondary" variant="secondary" size="sm" onPress={onClear}>Clear filters</Button></div>;
 }
 
 function ReportDetail({ report, onBack, onClaim, onUpdate, showToast }: { report: Report; onBack: () => void; onClaim: () => void; onUpdate: (id: string, patch: Partial<Report>) => void; showToast: (message: string) => void }) {
