@@ -17,8 +17,6 @@ export type Report = {
   createdBy: string;
   createdById?: string;
   initials: string;
-  color: string;
-  hasPhoto?: boolean;
   photoPath?: string;
   claimCount?: number;
 };
@@ -51,8 +49,6 @@ export const initialReports: Report[] = [
     createdLabel: 'Nov 8, 2026',
     createdBy: 'A. Chen',
     initials: 'AC',
-    color: '#d8c7f1',
-    hasPhoto: true,
     claimCount: 1,
   },
   {
@@ -68,7 +64,6 @@ export const initialReports: Report[] = [
     createdLabel: 'Nov 7, 2026',
     createdBy: 'Jordan M.',
     initials: 'JM',
-    color: '#bfe5d6',
   },
   {
     id: 'r-1035',
@@ -85,7 +80,6 @@ export const initialReports: Report[] = [
     createdLabel: 'Nov 6, 2026',
     createdBy: 'M. Okafor',
     initials: 'MO',
-    color: '#ffd5a7',
     claimCount: 2,
   },
   {
@@ -101,7 +95,6 @@ export const initialReports: Report[] = [
     createdLabel: 'Nov 5, 2026',
     createdBy: 'Priya S.',
     initials: 'PS',
-    color: '#c6d7ed',
   },
   {
     id: 'r-1026',
@@ -118,7 +111,6 @@ export const initialReports: Report[] = [
     createdLabel: 'Nov 4, 2026',
     createdBy: 'E. Williams',
     initials: 'EW',
-    color: '#f3b6aa',
   },
   {
     id: 'r-1021',
@@ -133,7 +125,6 @@ export const initialReports: Report[] = [
     createdLabel: 'Nov 3, 2026',
     createdBy: 'Noah T.',
     initials: 'NT',
-    color: '#f6d99b',
   },
   {
     id: 'r-1018',
@@ -150,7 +141,6 @@ export const initialReports: Report[] = [
     createdLabel: 'Nov 2, 2026',
     createdBy: 'Staff desk',
     initials: 'SD',
-    color: '#c4e3aa',
     claimCount: 1,
   },
   {
@@ -166,7 +156,6 @@ export const initialReports: Report[] = [
     createdLabel: 'Nov 1, 2026',
     createdBy: 'Taylor K.',
     initials: 'TK',
-    color: '#d4d4d4',
   },
 ];
 

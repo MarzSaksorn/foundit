@@ -37,7 +37,7 @@ import { setLanguage, t, useI18n } from './lib/i18n';
 
 type View = 'board' | 'moderation';
 
-type IconName = 'search' | 'plus' | 'grid' | 'inbox' | 'settings' | 'chevron' | 'arrow' | 'pin' | 'clock' | 'lock' | 'check' | 'close' | 'filter' | 'spark';
+type IconName = 'search' | 'plus' | 'grid' | 'inbox' | 'settings' | 'chevron' | 'arrow' | 'clock' | 'lock' | 'check' | 'close' | 'filter' | 'photo' | 'label';
 
 function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
   const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true };
@@ -49,13 +49,13 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
     settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-1.4 1.4-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-2v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L9 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H7v-2h.2a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L8.4 9l1.4-1.4.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6v-.2h2v.2a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L20 9l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v2h-.2a1.7 1.7 0 0 0-1.8 1Z" /></>,
     chevron: <path d="m9 18 6-6-6-6" />,
     arrow: <><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></>,
-    pin: <><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z" /><circle cx="12" cy="10" r="2" /></>,
     clock: <><circle cx="12" cy="12" r="8" /><path d="M12 8v4l2.5 1.5" /></>,
     lock: <><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
     check: <path d="m5 12 4 4L19 6" />,
     close: <><path d="m6 6 12 12M18 6 6 18" /></>,
     filter: <><path d="M4 6h16M7 12h10M10 18h4" /></>,
-    spark: <><path d="m12 3 1.3 4.7L18 9l-4.7 1.3L12 15l-1.3-4.7L6 9l4.7-1.3L12 3Z" /><path d="m19 15 .6 2.4L22 18l-2.4.6L19 21l-.6-2.4L16 18l2.4-.6L19 15Z" /></>,
+    photo: <><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><circle cx="9" cy="10" r="1.5" /><path d="m5 17 4-4 3 3 3-5 4 6" /></>,
+    label: <><path d="M3.5 5.5h10l7 6.5-7 6.5h-10z" /><circle cx="8" cy="12" r="1" /></>,
   };
   return <svg {...common}>{paths[name]}</svg>;
 }
@@ -98,8 +98,6 @@ function createDemoReport(input: NewReportInput, user: User | undefined, availab
     createdBy: user?.email || 'Signed-in student',
     createdById: user?.id,
     initials: (user?.email || 'PS').slice(0, 2).toUpperCase(),
-    color: input.type === 'found' ? '#c4e3aa' : '#f3b6aa',
-    hasPhoto: Boolean(input.photo),
   };
 }
 
@@ -290,8 +288,8 @@ function AppShell({ user }: { user?: User }) {
 
         <div className="sidebar-bottom">
           <div className="sidebar-note">
-            <div className="sidebar-note-icon"><Icon name="spark" size={17} /></div>
-            <div><strong>{t('Small leads add up.')}</strong><span>{t('Every report helps a classmate.')}</span></div>
+            <div className="sidebar-note-icon"><Icon name="search" size={17} /></div>
+            <div><strong>{t('Small leads add up')}</strong><span>{t('Every report helps a classmate.')}</span></div>
           </div>
           <button className="nav-item muted"><Icon name="settings" /><span>{t('School settings')}</span></button>
           <div className="account-row">
@@ -309,7 +307,7 @@ function AppShell({ user }: { user?: User }) {
         {view === 'board' && !selectedReport && reportsLoading && <BoardLoading />}
         {view === 'board' && !selectedReport && !reportsLoading && reportsError && <BoardError onRetry={() => setReloadKey((key) => key + 1)} />}
         {view === 'board' && !selectedReport && !reportsLoading && !reportsError && <BoardView reports={filteredReports} myReports={myReports} total={reports.filter((report) => ['approved', 'claimed'].includes(report.status)).length} filters={filters} updateFilter={updateFilter} onOpenReport={setSelectedId} onOpenComposer={openComposer} />}
-        {view === 'moderation' && canModerate && !selectedReport && <ModerationView reports={reports} claims={teacherClaims} onOpenReport={setSelectedId} onDecideReport={decideReport} onDecideClaim={decideClaim} />}
+        {view === 'moderation' && canModerate && !selectedReport && <ModerationView reports={reports} claims={teacherClaims} viewerRole={profileRole || 'teacher'} onOpenReport={setSelectedId} onDecideReport={decideReport} onDecideClaim={decideClaim} />}
         {selectedReport && <ReportDetail report={selectedReport} claim={ownClaims.find((claim) => claim.report_id === selectedReport.id)} canModerate={canModerate} onBack={() => setSelectedId(null)} onClaim={() => setClaimOpen(true)} onRequestReturn={() => setReturnConfirm(selectedReport)} showToast={showToast} />}
       </main>
 
@@ -367,22 +365,23 @@ function FilterSelect({ label, value, options, onChange }: { label: string; valu
 
 function BoardView({ reports, myReports, total, filters, updateFilter, onOpenReport, onOpenComposer }: { reports: Report[]; myReports: Report[]; total: number; filters: { query: string; type: 'all' | ReportType; category: string; location: string; status: 'all' | ReportStatus; date: 'all' | 'week' | 'older' }; updateFilter: (key: 'query' | 'type' | 'category' | 'location' | 'status' | 'date', value: string) => void; onOpenReport: (id: string) => void; onOpenComposer: (type: ReportType) => void }) {
   const nonPublicMine = filters.status === 'all' ? myReports.filter((report) => !['approved', 'claimed'].includes(report.status)) : [];
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
   return (
     <section className="board-page">
       <div className="board-heading-row">
         <div>
           <div className="eyebrow"><span className="eyebrow-line" />{t('Community board')}</div>
-          <h1>{t('Look for it.')}<br /><em>{t('Leave a lead.')}</em></h1>
+          <h1>{t('Look for it')}<br /><em>{t('Leave a lead')}</em></h1>
           <p className="lede">{t('A shared place for Phichai School to reconnect lost things with their people.')}</p>
         </div>
         <div className="heading-actions"><Button className="button secondary" variant="secondary" size="sm" onPress={() => onOpenComposer('missing')}><Icon name="plus" size={16} /> {t('Report missing')}</Button><Button className="button primary" variant="primary" size="sm" onPress={() => onOpenComposer('found')}><Icon name="plus" size={16} /> {t('Report found')}</Button></div>
       </div>
 
-      <div className="board-stats"><div className="stat-block"><strong>{total}</strong><span>{t('total reports')}</span></div><div className="stat-divider" /><div className="stat-block"><strong>{reports.filter((report) => report.type === 'found').length}</strong><span>{t('found items')}</span></div><div className="stat-divider" /><div className="stat-block"><strong>{reports.filter((report) => report.type === 'missing').length}</strong><span>{t('still missing')}</span></div><div className="stat-callout"><Icon name="spark" size={17} /><span><strong>{t('3 items')}</strong> {t('found their way home this week')}</span></div></div>
+      <div className="board-stats"><div className="stat-block"><strong>{total}</strong><span>{t('Total reports')}</span></div><div className="stat-divider" /><div className="stat-block"><strong>{reports.filter((report) => report.type === 'found').length}</strong><span>{t('Found items')}</span></div><div className="stat-divider" /><div className="stat-block"><strong>{reports.filter((report) => report.type === 'missing').length}</strong><span>{t('Still missing')}</span></div><div className="stat-callout"><Icon name="photo" size={17} /><span>{t('A clear photo helps classmates recognize an item.')}</span></div></div>
 
       <div className="board-toolbar">
         <div className="search-wrap"><Icon name="search" size={19} /><input aria-label={t('Search reports')} placeholder={t('Search by item or description')} value={filters.query} onChange={(event) => updateFilter('query', event.target.value)} /></div>
-        <div className="filter-group"><FilterSelect label="Filter by type" value={filters.type} options={[{ id: 'all', label: 'All types' }, { id: 'missing', label: 'Missing' }, { id: 'found', label: 'Found' }]} onChange={(value) => updateFilter('type', value)} /><FilterSelect label="Filter by category" value={filters.category} options={categories.map((category) => ({ id: category === 'All categories' ? 'all' : category, label: category }))} onChange={(value) => updateFilter('category', value)} /><FilterSelect label="Filter by location" value={filters.location} options={locations.map((location) => ({ id: location === 'All locations' ? 'all' : location, label: location }))} onChange={(value) => updateFilter('location', value)} /><FilterSelect label="Filter by date" value={filters.date} options={[{ id: 'all', label: 'Any date' }, { id: 'week', label: 'Past week' }, { id: 'older', label: 'Older' }]} onChange={(value) => updateFilter('date', value)} /><FilterSelect label="Filter by status" value={filters.status} options={[{ id: 'all', label: 'Live only' }, { id: 'pending', label: 'Pending' }, { id: 'claimed', label: 'Claimed' }, { id: 'returned', label: 'Returned' }]} onChange={(value) => updateFilter('status', value)} /><button className="filter-icon-button" aria-label={t('More filters')}><Icon name="filter" size={17} /></button></div>
+        <div className={`filter-group${showMoreFilters ? ' expanded' : ''}`}><FilterSelect label="Filter by type" value={filters.type} options={[{ id: 'all', label: 'All types' }, { id: 'missing', label: 'Missing' }, { id: 'found', label: 'Found' }]} onChange={(value) => updateFilter('type', value)} /><FilterSelect label="Filter by category" value={filters.category} options={categories.map((category) => ({ id: category === 'All categories' ? 'all' : category, label: category }))} onChange={(value) => updateFilter('category', value)} /><FilterSelect label="Filter by location" value={filters.location} options={locations.map((location) => ({ id: location === 'All locations' ? 'all' : location, label: location }))} onChange={(value) => updateFilter('location', value)} /><FilterSelect label="Filter by date" value={filters.date} options={[{ id: 'all', label: 'Any date' }, { id: 'week', label: 'Past week' }, { id: 'older', label: 'Older' }]} onChange={(value) => updateFilter('date', value)} /><FilterSelect label="Filter by status" value={filters.status} options={[{ id: 'all', label: 'Live only' }, { id: 'pending', label: 'Pending' }, { id: 'claimed', label: 'Claimed' }, { id: 'returned', label: 'Returned' }]} onChange={(value) => updateFilter('status', value)} /><button type="button" className="filter-icon-button" aria-label={t(showMoreFilters ? 'Fewer filters' : 'More filters')} aria-expanded={showMoreFilters} onClick={() => setShowMoreFilters((visible) => !visible)}><Icon name={showMoreFilters ? 'close' : 'filter'} size={17} /></button></div>
       </div>
 
       <div className="board-section-header"><div><h2>{t('Active reports')} <span>{reports.length}</span></h2><p>{t('Approved and unresolved items from your school community.')}</p></div><div className="legend"><span><i className="legend-dot found" />{t('Found')}</span><span><i className="legend-dot missing" />{t('Missing')}</span></div></div>
@@ -393,13 +392,22 @@ function BoardView({ reports, myReports, total, filters, updateFilter, onOpenRep
 }
 
 function ReportCard({ report, onOpen, showStatus = false }: { report: Report; onOpen: () => void; showStatus?: boolean }) {
-  return <Card className="report-card" variant="default" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onOpen(); }}>
-    <div className="card-visual" style={{ background: report.color }}>{report.photoPath && <PrivatePhoto path={report.photoPath} /> }<div className="visual-lines" /><span className={`type-pill ${report.type}`}>{t(typeCopy[report.type].label)}</span>{report.hasPhoto && <span className="photo-label">{t('Photo')}</span>}<span className="pin"><span /></span></div>
-    <Card.Content className="card-body"><div className="card-topline"><span className="category-label">{t(report.category)}</span><span className="card-date">{showStatus ? t(statusLabel[report.status]) : t(report.dateLabel)}</span></div><h3>{report.title}</h3><p>{report.description}</p><div className="card-footer"><span className="location"><Icon name="pin" size={14} />{t(report.location)}</span><span className="card-arrow"><Icon name="arrow" size={15} /></span></div></Card.Content>
+  return <Card className="report-card" variant="default" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpen(); } }}>
+    <ReportArtwork report={report} />
+    <Card.Content className="card-body"><div className="card-topline"><span className="category-label">{t(report.category)}</span><span className="card-date">{showStatus ? t(statusLabel[report.status]) : t(report.dateLabel)}</span></div><h3>{report.title}</h3><p>{report.description}</p><div className="card-footer"><span className="location"><Icon name="label" size={14} />{t(report.location)}</span><span className="card-arrow"><Icon name="arrow" size={15} /></span></div></Card.Content>
   </Card>;
 }
 
-function PrivatePhoto({ path }: { path: string }) {
+function ReportArtwork({ report, detail = false }: { report: Report; detail?: boolean }) {
+  return <div className={`${detail ? 'detail-visual' : 'card-visual'} report-artwork${report.photoPath ? ' has-photo' : ''}`}>
+    <div className="photo-placeholder"><Icon name="photo" size={detail ? 30 : 22} /><span>{t('No photo attached')}</span></div>
+    {report.photoPath && <PrivatePhoto path={report.photoPath} alt={report.title} />}
+    <span className={`type-pill ${report.type}`}>{t(typeCopy[report.type].label)}</span>
+    {detail && <div className="detail-visual-caption"><span>{t('Report')} {report.id.replace('r-', '#')}</span><strong>{report.photoPath ? t('Photo attached') : t('No photo added')}</strong></div>}
+  </div>;
+}
+
+function PrivatePhoto({ path, alt }: { path: string; alt: string }) {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
@@ -416,7 +424,7 @@ function PrivatePhoto({ path }: { path: string }) {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [path]);
-  return url ? <img src={url} alt="" aria-hidden="true" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} /> : null;
+  return url ? <img src={url} alt={alt} className="private-report-photo" /> : null;
 }
 
 function EmptyState({ onClear }: { onClear: () => void }) {
@@ -432,7 +440,7 @@ function ReportDetail({ report, claim, canModerate, onBack, onClaim, onRequestRe
     <button className="back-link" onClick={onBack}><span>←</span> {t('Back to board')}</button>
     <div className="detail-layout">
       <div className="detail-main">
-        <div className="detail-visual" style={{ background: report.color }}>{report.photoPath && <PrivatePhoto path={report.photoPath} />}<div className="visual-lines" /><span className={`type-pill ${report.type}`}>{t(typeCopy[report.type].label)}</span><span className="detail-pin"><span /></span><div className="detail-visual-caption"><span>{t('Report')} {report.id.replace('r-', '#')}</span><strong>{report.hasPhoto ? t('Photo attached') : t('No photo added')}</strong></div></div>
+        <ReportArtwork report={report} detail />
         <div className="detail-header"><div><div className="eyebrow"><span className="eyebrow-line" />{t(report.category)}</div><h1>{report.title}</h1></div><span className={`status-chip ${statusTone[report.status]}`}>{t(statusLabel[report.status])}</span></div>
         <p className="detail-description">{report.description}</p>
         <div className="detail-facts"><div><span>{t(isFound ? 'Found' : 'Last seen')}</span><strong>{report.dateLabel.replace('Found ', '').replace('Last seen ', '')}</strong></div><div><span>{t('Location')}</span><strong>{t(report.location)}</strong></div><div><span>{isFound ? t('Stored at') : t('Reported by')}</span><strong>{isFound ? (report.storageLocation ? t(report.storageLocation) : '') : report.createdBy}</strong></div></div>
@@ -448,11 +456,11 @@ function ReportDetail({ report, claim, canModerate, onBack, onClaim, onRequestRe
   </section>;
 }
 
-function ModerationView({ reports, claims, onOpenReport, onDecideReport, onDecideClaim }: { reports: Report[]; claims: TeacherClaim[]; onOpenReport: (id: string) => void; onDecideReport: (id: string, status: Extract<ReportStatus, 'approved' | 'rejected' | 'returned' | 'archived'>) => void | Promise<void>; onDecideClaim: (id: string, status: Extract<TeacherClaim['status'], 'approved' | 'rejected' | 'needs_more_information'>) => void | Promise<void> }) {
+function ModerationView({ reports, claims, viewerRole, onOpenReport, onDecideReport, onDecideClaim }: { reports: Report[]; claims: TeacherClaim[]; viewerRole: FoundItRole; onOpenReport: (id: string) => void; onDecideReport: (id: string, status: Extract<ReportStatus, 'approved' | 'rejected' | 'returned' | 'archived'>) => void | Promise<void>; onDecideClaim: (id: string, status: Extract<TeacherClaim['status'], 'approved' | 'rejected' | 'needs_more_information'>) => void | Promise<void> }) {
   const pending = reports.filter((report) => report.status === 'pending');
   const reportById = new Map(reports.map((report) => [report.id, report]));
-  return <section className="moderation-page"><div className="moderation-heading"><div><div className="eyebrow"><span className="eyebrow-line purple" />{t('Teacher workspace')}</div><h1>{t('Keep the board')}<br /><em>{t('trustworthy.')}</em></h1><p className="lede">{t('Review new reports, protect private details, and help items get home.')}</p></div><div className="moderation-badge"><span className="online-dot purple-dot" />{t('You’re viewing as')} <strong>{t('teacher')}</strong></div></div>
-    <div className="moderation-summary"><div className="mod-summary-card"><span className="summary-icon pending"><Icon name="clock" size={18} /></span><div><strong>{pending.length}</strong><span>{t('reports to review')}</span></div><span className="summary-arrow">→</span></div><div className="mod-summary-card"><span className="summary-icon claim"><Icon name="lock" size={18} /></span><div><strong>{claims.length}</strong><span>{t('private claims')}</span></div><span className="summary-arrow">→</span></div><div className="mod-summary-card"><span className="summary-icon returned"><Icon name="check" size={18} /></span><div><strong>{reports.filter((report) => report.status === 'returned').length}</strong><span>{t('returned this month')}</span></div><span className="summary-arrow">→</span></div></div>
+  return <section className="moderation-page"><div className="moderation-heading"><div><div className="eyebrow"><span className="eyebrow-line purple" />{t('Teacher workspace')}</div><h1>{t('Keep the board')}<br /><em>{t('trustworthy.')}</em></h1><p className="lede">{t('Review new reports, protect private details, and help items get home.')}</p></div><div className="moderation-badge"><span className="online-dot purple-dot" />{t('You’re viewing as')} <strong>{t(viewerRole)}</strong></div></div>
+    <div className="moderation-summary"><div className="mod-summary-card"><span className="summary-icon pending"><Icon name="clock" size={18} /></span><div><strong>{pending.length}</strong><span>{t('reports to review')}</span></div><span className="summary-arrow"><Icon name="arrow" size={16} /></span></div><div className="mod-summary-card"><span className="summary-icon claim"><Icon name="lock" size={18} /></span><div><strong>{claims.length}</strong><span>{t('private claims')}</span></div><span className="summary-arrow"><Icon name="arrow" size={16} /></span></div><div className="mod-summary-card"><span className="summary-icon returned"><Icon name="check" size={18} /></span><div><strong>{reports.filter((report) => report.status === 'returned').length}</strong><span>{t('Items returned')}</span></div><span className="summary-arrow"><Icon name="arrow" size={16} /></span></div></div>
     <div className="queue-heading"><div><h2>{t('Needs your attention')} <span>{pending.length + claims.length}</span></h2><p>{t('Take a look before these reports reach the wider school community.')}</p></div></div>
     <div className="moderation-list">{pending.map((report) => <ModerationRow key={report.id} report={report} onOpen={() => onOpenReport(report.id)} onApprove={() => onDecideReport(report.id, 'approved')} onReject={() => onDecideReport(report.id, 'rejected')} />)}{claims.map((claim) => {
       const report = reportById.get(claim.report_id);
@@ -462,11 +470,11 @@ function ModerationView({ reports, claims, onOpenReport, onDecideReport, onDecid
 }
 
 function ModerationRow({ report, onOpen, onApprove, onReject }: { report: Report; onOpen: () => void; onApprove: () => void | Promise<void>; onReject: () => void | Promise<void> }) {
-  return <div className="moderation-row"><div className="row-thumb" style={{ background: report.color }}>{report.photoPath && <PrivatePhoto path={report.photoPath} />}<span className={`mini-type ${report.type}`} /></div><div className="row-main"><div className="row-label"><span className="orange-label">{t('New report')}</span><span>{report.createdLabel}</span></div><h3>{report.title}</h3><p>{t(typeCopy[report.type].label)} · {t(report.category)} · {t(report.location)}</p></div><div className="row-actions"><Button className="row-open" variant="ghost" size="sm" onPress={onOpen}>{t('Review')} <Icon name="arrow" size={14} /></Button><Button className="approve-button" variant="ghost" size="sm" onPress={() => void onReject()} aria-label={`${t('Reject')} ${report.title}`}>{t('Reject')}</Button><Button className="approve-button" variant="ghost" size="sm" isIconOnly onPress={() => void onApprove()} aria-label={`${t('Approve')} ${report.title}`}><Icon name="check" size={16} /></Button></div></div>;
+  return <div className="moderation-row"><div className="row-thumb">{report.photoPath ? <PrivatePhoto path={report.photoPath} alt={report.title} /> : <Icon name="photo" size={18} />}</div><div className="row-main"><div className="row-label"><span className="orange-label">{t('New report')}</span><span>{report.createdLabel}</span></div><h3>{report.title}</h3><p>{t(typeCopy[report.type].label)} · {t(report.category)} · {t(report.location)}</p></div><div className="row-actions"><Button className="row-open" variant="ghost" size="sm" onPress={onOpen}>{t('Review')} <Icon name="arrow" size={14} /></Button><Button className="approve-button" variant="ghost" size="sm" onPress={() => void onReject()} aria-label={`${t('Reject')} ${report.title}`}>{t('Reject')}</Button><Button className="approve-button" variant="ghost" size="sm" isIconOnly onPress={() => void onApprove()} aria-label={`${t('Approve')} ${report.title}`}><Icon name="check" size={16} /></Button></div></div>;
 }
 
 function ClaimModerationRow({ claim, report, onOpen, onDecision }: { claim: TeacherClaim; report: Report; onOpen: () => void; onDecision: (status: Extract<TeacherClaim['status'], 'approved' | 'rejected' | 'needs_more_information'>) => void | Promise<void> }) {
-  return <div className="moderation-row claim-review-row"><div className="row-thumb" style={{ background: report.color }}><span className={`mini-type ${report.type}`} /><span className="row-lock"><Icon name="lock" size={12} /></span></div><div className="row-main"><div className="row-label"><span className="purple-label">{t('Private claim')} · {report.title}</span><span>{formatClaimDate(claim.created_at)}</span></div><p className="private-claim-detail">{claim.private_details}</p><div className="row-actions"><Button className="row-open" variant="ghost" size="sm" onPress={onOpen}>{t('Review report')}</Button><Button className="approve-button" variant="ghost" size="sm" onPress={() => void onDecision('needs_more_information')}>{t('Ask for more information')}</Button><Button className="approve-button" variant="ghost" size="sm" onPress={() => void onDecision('rejected')}>{t('Reject claim')}</Button><Button className="approve-button" variant="ghost" size="sm" onPress={() => void onDecision('approved')}>{t('Approve claim')}</Button></div></div></div>;
+  return <div className="moderation-row claim-review-row"><div className="row-thumb">{report.photoPath ? <PrivatePhoto path={report.photoPath} alt={report.title} /> : <Icon name="photo" size={18} />}<span className="row-lock"><Icon name="lock" size={12} /></span></div><div className="row-main"><div className="row-label"><span className="purple-label">{t('Private claim')} · {report.title}</span><span>{formatClaimDate(claim.created_at)}</span></div><p className="private-claim-detail">{claim.private_details}</p><div className="row-actions"><Button className="row-open" variant="ghost" size="sm" onPress={onOpen}>{t('Review report')}</Button><Button className="approve-button" variant="ghost" size="sm" onPress={() => void onDecision('needs_more_information')}>{t('Ask for more information')}</Button><Button className="approve-button" variant="ghost" size="sm" onPress={() => void onDecision('rejected')}>{t('Reject claim')}</Button><Button className="approve-button" variant="ghost" size="sm" onPress={() => void onDecision('approved')}>{t('Approve claim')}</Button></div></div></div>;
 }
 
 function formatClaimDate(value: string) {

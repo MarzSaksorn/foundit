@@ -65,7 +65,6 @@ type SupabaseReportRow = {
   storage_locations: { label: string; responsible_name: string } | { label: string; responsible_name: string }[] | null;
 };
 
-const cardColors = ['#d8c7f1', '#bfe5d6', '#ffd5a7', '#c6d7ed', '#f3b6aa', '#f6d99b', '#c4e3aa'];
 const SCHOOL_DOMAIN = 'phichai.ac.th';
 const PHOTO_BUCKET = 'foundit-photos';
 
@@ -84,11 +83,6 @@ function ageInDays(value: string) {
 
 function initialsFromId(id: string) {
   return id.replace(/-/g, '').slice(0, 2).toUpperCase();
-}
-
-function colorFromId(id: string) {
-  const checksum = id.split('').reduce((sum, character) => sum + character.charCodeAt(0), 0);
-  return cardColors[checksum % cardColors.length];
 }
 
 export function mapSupabaseReport(row: SupabaseReportRow, userId?: string): Report {
@@ -111,8 +105,6 @@ export function mapSupabaseReport(row: SupabaseReportRow, userId?: string): Repo
     createdBy: userId && row.created_by === userId ? 'You' : 'Phichai School member',
     createdById: row.created_by,
     initials: initialsFromId(row.created_by),
-    color: colorFromId(row.id),
-    hasPhoto: Boolean(row.photo_path),
     photoPath: row.photo_path || undefined,
   };
 }
