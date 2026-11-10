@@ -28,3 +28,7 @@
 @media(max-width:620px){.topbar-actions{gap:9px}.saved-note{display:none}}
 
 .auth-card>.language-switch{display:flex;width:max-content;margin:0 0 16px auto}
+
+
+/* Persisted submission and moderation surfaces */
+.my-submissions{margin-top:48px}.field-note{grid-column:1/-1;margin-top:-12px;color:var(--muted,#6d6965);font-size:13px}.private-claim-detail{margin:9px 0;padding:12px 14px;border-left:3px solid var(--purple,#8d6bb5);border-radius:4px;background:#f7f2fb;color:var(--ink,#222);white-space:pre-wrap;overflow-wrap:anywhere}.claim-review-row{align-items:flex-start}.claim-review-row .row-main{min-width:0;flex:1}.claim-review-row .row-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px}.claim-status-note{margin-top:10px;color:var(--muted,#6d6965);font-size:13px}.moderation-history{margin-top:28px;padding:18px;border:1px solid #e7ded5;border-radius:12px;background:#fffdfa}.moderation-history h3{margin:0 0 12px;font-family:'Josefin Sans',sans-serif;font-size:20px}.moderation-history ol{display:grid;gap:12px;margin:0;padding-left:20px}.moderation-history li{padding-left:3px}.moderation-history li strong,.moderation-history li span{display:block}.moderation-history li span{margin-top:3px;color:var(--muted,#6d6965);font-size:12px}.moderation-history li p{margin:6px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}.my-submissions .report-grid{margin-top:16px}

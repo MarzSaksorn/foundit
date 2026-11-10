@@ -14,7 +14,24 @@ import {
   type ReportType,
 } from './lib/reports';
 import { PHICHAI_DOMAIN, PHICHAI_SCHOOL, signInWithGoogle, validateSchoolUser } from './lib/auth';
-import { fetchLiveReports } from './lib/live-reports';
+import {
+  createClaim,
+  createReport,
+  fetchCurrentProfile,
+  fetchLiveReports,
+  fetchModerationHistory,
+  fetchOwnClaims,
+  fetchStorageLocations,
+  fetchTeacherClaims,
+  moderateReport,
+  reviewClaim,
+  type FoundItRole,
+  type ModerationEvent,
+  type NewReportInput,
+  type OwnClaim,
+  type StorageLocation,
+  type TeacherClaim,
+} from './lib/live-reports';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 import { setLanguage, t, useI18n } from './lib/i18n';
 
@@ -56,6 +73,35 @@ const statusTone: Record<ReportStatus, string> = {
   rejected: 'status-rejected',
   archived: 'status-archived',
 };
+
+const demoStorageLocations: StorageLocation[] = [
+  { id: 'demo-front-office', label: 'Front office shelf A', responsible_name: 'School admin' },
+  { id: 'demo-library-desk', label: 'Library desk', responsible_name: 'Librarian' },
+  { id: 'demo-gym-office', label: 'Gym office', responsible_name: 'PE teacher' },
+];
+
+function createDemoReport(input: NewReportInput, user: User | undefined, availableLocations: StorageLocation[]): Report {
+  const storageLocation = availableLocations.find((item) => item.id === input.storageLocationId);
+  return {
+    id: `r-${Date.now()}`,
+    type: input.type,
+    title: input.title.trim(),
+    category: input.category,
+    description: input.description.trim(),
+    dateLabel: `${input.type === 'found' ? 'Found' : 'Last seen'} ${input.date}`,
+    location: input.location,
+    storageLocation: input.type === 'found' ? storageLocation?.label : undefined,
+    responsiblePerson: input.type === 'found' ? storageLocation?.responsible_name : undefined,
+    status: input.type === 'missing' ? 'approved' : 'pending',
+    ageDays: 0,
+    createdLabel: 'Today',
+    createdBy: user?.email || 'Signed-in student',
+    createdById: user?.id,
+    initials: (user?.email || 'PS').slice(0, 2).toUpperCase(),
+    color: input.type === 'found' ? '#c4e3aa' : '#f3b6aa',
+    hasPhoto: Boolean(input.photo),
+  };
+}
 
 function App() {
   const { language } = useI18n();
@@ -124,6 +170,10 @@ function AppShell({ user }: { user?: User }) {
   const [reportsLoading, setReportsLoading] = useState(isSupabaseConfigured);
   const [reportsError, setReportsError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [profileRole, setProfileRole] = useState<FoundItRole | null>(null);
+  const [storageLocations, setStorageLocations] = useState<StorageLocation[]>(isSupabaseConfigured ? [] : demoStorageLocations);
+  const [ownClaims, setOwnClaims] = useState<OwnClaim[]>([]);
+  const [teacherClaims, setTeacherClaims] = useState<TeacherClaim[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerType, setComposerType] = useState<ReportType>('missing');
@@ -132,10 +182,12 @@ function AppShell({ user }: { user?: User }) {
   const [toast, setToast] = useState<string | null>(null);
   const [filters, setFilters] = useState({ query: '', type: 'all' as 'all' | ReportType, category: 'all', location: 'all', status: 'all' as 'all' | ReportStatus, date: 'all' as 'all' | 'week' | 'older' });
 
-  const filteredReports = useMemo(() => filterReports(reports, filters).filter((report) => filters.status === 'all' ? report.status === 'approved' : report.status === filters.status), [reports, filters]);
+  const canModerate = !isSupabaseConfigured || ['teacher', 'moderator', 'admin'].includes(profileRole || '');
+  const filteredReports = useMemo(() => filterReports(reports, filters).filter((report) => filters.status === 'all' ? ['approved', 'claimed'].includes(report.status) : report.status === filters.status), [reports, filters]);
+  const myReports = useMemo(() => reports.filter((report) => user && report.createdById === user.id), [reports, user?.id]);
   const selectedReport = selectedId ? getReportById(reports, selectedId) : undefined;
-  const pendingCount = reports.filter((report) => report.status === 'pending').length;
-  const claimCount = reports.reduce((count, report) => count + (report.claimCount || 0), 0);
+  const pendingCount = canModerate ? reports.filter((report) => report.status === 'pending').length : 0;
+  const claimCount = canModerate ? teacherClaims.length : 0;
 
   useEffect(() => {
     const match = window.location.pathname.match(/^\/reports\/(.+)$/);
@@ -147,8 +199,23 @@ function AppShell({ user }: { user?: User }) {
     let active = true;
     setReportsLoading(true);
     setReportsError(null);
-    void fetchLiveReports()
-      .then((nextReports) => { if (active) setReports(nextReports); })
+    void (async () => {
+      const profile = await fetchCurrentProfile(user.id);
+      const [nextReports, nextLocations, nextOwnClaims] = await Promise.all([
+        fetchLiveReports(user.id),
+        fetchStorageLocations(),
+        fetchOwnClaims(user.id),
+      ]);
+      const teacher = Boolean(profile && ['teacher', 'moderator', 'admin'].includes(profile.role));
+      const nextTeacherClaims = teacher ? await fetchTeacherClaims() : [];
+      if (!active) return;
+      setProfileRole(profile?.role || null);
+      setReports(nextReports);
+      setStorageLocations(nextLocations);
+      setOwnClaims(nextOwnClaims);
+      setTeacherClaims(nextTeacherClaims);
+      if (!teacher) setView('board');
+    })()
       .catch(() => { if (active) setReportsError('We couldn’t load the live board. Check your connection and try again.'); })
       .finally(() => { if (active) setReportsLoading(false); });
     return () => { active = false; };
@@ -163,8 +230,30 @@ function AppShell({ user }: { user?: User }) {
     window.setTimeout(() => setToast(null), 2600);
   };
 
-  const updateReport = (id: string, patch: Partial<Report>) => {
-    setReports((current) => current.map((report) => report.id === id ? { ...report, ...patch } : report));
+  const decideReport = async (id: string, status: Extract<ReportStatus, 'approved' | 'rejected' | 'returned' | 'archived'>) => {
+    try {
+      if (isSupabaseConfigured) {
+        await moderateReport(id, status);
+        setReloadKey((key) => key + 1);
+      } else {
+        setReports((current) => current.map((report) => report.id === id ? { ...report, status } : report));
+      }
+      if (status === 'approved') showToast(t('Report approved'));
+      if (status === 'rejected') showToast(t('Report rejected'));
+    } catch {
+      showToast(t('Could not save this moderation decision. Please try again.'));
+    }
+  };
+
+  const decideClaim = async (claimId: string, status: Extract<TeacherClaim['status'], 'approved' | 'rejected' | 'needs_more_information'>) => {
+    try {
+      if (!isSupabaseConfigured) return;
+      await reviewClaim(claimId, status);
+      setReloadKey((key) => key + 1);
+      showToast(t(status === 'approved' ? 'Claim approved' : status === 'rejected' ? 'Claim rejected' : 'More information requested'));
+    } catch {
+      showToast(t('Could not save this moderation decision. Please try again.'));
+    }
   };
 
   const openComposer = (type: ReportType) => {
@@ -188,9 +277,9 @@ function AppShell({ user }: { user?: User }) {
           <button className={`nav-item ${view === 'board' ? 'active' : ''}`} onClick={() => { setView('board'); setSelectedId(null); }}>
             <Icon name="grid" /> <span>{t('Board')}</span><span className="nav-count">{reports.filter((report) => report.status === 'approved').length}</span>
           </button>
-          <button className={`nav-item ${view === 'moderation' ? 'active' : ''}`} onClick={() => { setView('moderation'); setSelectedId(null); }}>
+          {canModerate && <button className={`nav-item ${view === 'moderation' ? 'active' : ''}`} onClick={() => { setView('moderation'); setSelectedId(null); }}>
             <Icon name="inbox" /> <span>{t('Moderation')}</span><span className="nav-count accent">{pendingCount + claimCount}</span>
-          </button>
+          </button>}
         </nav>
 
         <div className="sidebar-section-label">{t('Shortcuts')}</div>
@@ -219,14 +308,43 @@ function AppShell({ user }: { user?: User }) {
 
         {view === 'board' && !selectedReport && reportsLoading && <BoardLoading />}
         {view === 'board' && !selectedReport && !reportsLoading && reportsError && <BoardError onRetry={() => setReloadKey((key) => key + 1)} />}
-        {view === 'board' && !selectedReport && !reportsLoading && !reportsError && <BoardView reports={filteredReports} total={reports.length} filters={filters} updateFilter={updateFilter} onOpenReport={setSelectedId} onOpenComposer={openComposer} />}
-        {view === 'moderation' && !selectedReport && <ModerationView reports={reports} onOpenReport={setSelectedId} onUpdateReport={updateReport} />}
-        {selectedReport && <ReportDetail report={selectedReport} onBack={() => setSelectedId(null)} onClaim={() => setClaimOpen(true)} onRequestReturn={() => setReturnConfirm(selectedReport)} showToast={showToast} />}
+        {view === 'board' && !selectedReport && !reportsLoading && !reportsError && <BoardView reports={filteredReports} myReports={myReports} total={reports.filter((report) => ['approved', 'claimed'].includes(report.status)).length} filters={filters} updateFilter={updateFilter} onOpenReport={setSelectedId} onOpenComposer={openComposer} />}
+        {view === 'moderation' && canModerate && !selectedReport && <ModerationView reports={reports} claims={teacherClaims} onOpenReport={setSelectedId} onDecideReport={decideReport} onDecideClaim={decideClaim} />}
+        {selectedReport && <ReportDetail report={selectedReport} claim={ownClaims.find((claim) => claim.report_id === selectedReport.id)} canModerate={canModerate} onBack={() => setSelectedId(null)} onClaim={() => setClaimOpen(true)} onRequestReturn={() => setReturnConfirm(selectedReport)} showToast={showToast} />}
       </main>
 
-      {composerOpen && <ReportComposer type={composerType} onClose={() => setComposerOpen(false)} onSubmitted={(report) => { setReports((current) => [report, ...current]); setComposerOpen(false); showToast(report.status === 'approved' ? 'Missing report published to the board.' : 'Found report saved. A teacher will review it shortly.'); }} />}
-      {claimOpen && selectedReport && <ClaimModal report={selectedReport} onClose={() => setClaimOpen(false)} onSubmitted={() => { updateReport(selectedReport.id, { status: 'claimed', claimCount: (selectedReport.claimCount || 0) + 1 }); setClaimOpen(false); showToast('Claim sent privately to the teacher.'); }} />}
-      {returnConfirm && <ReturnConfirmModal report={returnConfirm} onClose={() => setReturnConfirm(null)} onConfirm={() => { updateReport(returnConfirm.id, { status: 'returned' }); setReturnConfirm(null); showToast('Report marked as returned.'); }} />}
+      {composerOpen && <ReportComposer type={composerType} storageLocations={storageLocations} onClose={() => setComposerOpen(false)} onSubmitted={async (input) => {
+        const saved = isSupabaseConfigured && user ? await createReport(user, input) : createDemoReport(input, user, storageLocations);
+        setReports((current) => [saved, ...current.filter((report) => report.id !== saved.id)]);
+        setComposerOpen(false);
+        if (isSupabaseConfigured) setReloadKey((key) => key + 1);
+        showToast(t(saved.type === 'missing' ? 'Missing report published to the board.' : 'Found report saved. A teacher will review it shortly.'));
+      }} />}
+      {claimOpen && selectedReport && <ClaimModal report={selectedReport} onClose={() => setClaimOpen(false)} onSubmitted={async (details) => {
+        if (isSupabaseConfigured && user) {
+          const claim = await createClaim(user.id, selectedReport.id, details);
+          setOwnClaims((current) => [claim, ...current.filter((item) => item.id !== claim.id)]);
+          setReloadKey((key) => key + 1);
+        } else {
+          setReports((current) => current.map((report) => report.id === selectedReport.id ? { ...report, claimCount: (report.claimCount || 0) + 1 } : report));
+        }
+        setClaimOpen(false);
+        showToast(t('Claim sent privately to the teacher.'));
+      }} />}
+      {returnConfirm && <ReturnConfirmModal report={returnConfirm} onClose={() => setReturnConfirm(null)} onConfirm={async () => {
+        try {
+          if (isSupabaseConfigured) {
+            await moderateReport(returnConfirm.id, 'returned');
+            setReloadKey((key) => key + 1);
+          } else {
+            setReports((current) => current.map((report) => report.id === returnConfirm.id ? { ...report, status: 'returned' } : report));
+          }
+          setReturnConfirm(null);
+          showToast(t('Report marked as returned.'));
+        } catch {
+          showToast(t('Could not mark this report as returned. Please try again.'));
+        }
+      }} />}
       {toast && <div className="toast" role="status"><span className="toast-check"><Icon name="check" size={14} /></span>{toast}</div>}
     </div>
   );
@@ -247,7 +365,8 @@ function FilterSelect({ label, value, options, onChange }: { label: string; valu
   </Select>;
 }
 
-function BoardView({ reports, total, filters, updateFilter, onOpenReport, onOpenComposer }: { reports: Report[]; total: number; filters: { query: string; type: 'all' | ReportType; category: string; location: string; status: 'all' | ReportStatus; date: 'all' | 'week' | 'older' }; updateFilter: (key: 'query' | 'type' | 'category' | 'location' | 'status' | 'date', value: string) => void; onOpenReport: (id: string) => void; onOpenComposer: (type: ReportType) => void }) {
+function BoardView({ reports, myReports, total, filters, updateFilter, onOpenReport, onOpenComposer }: { reports: Report[]; myReports: Report[]; total: number; filters: { query: string; type: 'all' | ReportType; category: string; location: string; status: 'all' | ReportStatus; date: 'all' | 'week' | 'older' }; updateFilter: (key: 'query' | 'type' | 'category' | 'location' | 'status' | 'date', value: string) => void; onOpenReport: (id: string) => void; onOpenComposer: (type: ReportType) => void }) {
+  const nonPublicMine = filters.status === 'all' ? myReports.filter((report) => !['approved', 'claimed'].includes(report.status)) : [];
   return (
     <section className="board-page">
       <div className="board-heading-row">
@@ -268,34 +387,109 @@ function BoardView({ reports, total, filters, updateFilter, onOpenReport, onOpen
 
       <div className="board-section-header"><div><h2>{t('Active reports')} <span>{reports.length}</span></h2><p>{t('Approved and unresolved items from your school community.')}</p></div><div className="legend"><span><i className="legend-dot found" />{t('Found')}</span><span><i className="legend-dot missing" />{t('Missing')}</span></div></div>
       {reports.length > 0 ? <div className="report-grid">{reports.map((report) => <ReportCard key={report.id} report={report} onOpen={() => onOpenReport(report.id)} />)}</div> : <EmptyState onClear={() => { updateFilter('query', ''); updateFilter('type', 'all'); updateFilter('category', 'all'); updateFilter('location', 'all'); updateFilter('status', 'all'); updateFilter('date', 'all'); }} />}
+      {nonPublicMine.length > 0 && <section className="my-submissions"><div className="board-section-header"><div><h2>{t('Your submissions')} <span>{nonPublicMine.length}</span></h2><p>{t('Only you and authorized teachers can see reports awaiting review.')}</p></div></div><div className="report-grid">{nonPublicMine.map((report) => <ReportCard key={report.id} report={report} showStatus onOpen={() => onOpenReport(report.id)} />)}</div></section>}
     </section>
   );
 }
 
-function ReportCard({ report, onOpen }: { report: Report; onOpen: () => void }) {
+function ReportCard({ report, onOpen, showStatus = false }: { report: Report; onOpen: () => void; showStatus?: boolean }) {
   return <Card className="report-card" variant="default" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onOpen(); }}>
-    <div className="card-visual" style={{ background: report.color }}><div className="visual-lines" /><span className={`type-pill ${report.type}`}>{t(typeCopy[report.type].label)}</span>{report.hasPhoto && <span className="photo-label">{t('Photo')}</span>}<span className="pin"><span /></span></div>
-    <Card.Content className="card-body"><div className="card-topline"><span className="category-label">{t(report.category)}</span><span className="card-date">{t(report.dateLabel)}</span></div><h3>{report.title}</h3><p>{report.description}</p><div className="card-footer"><span className="location"><Icon name="pin" size={14} />{t(report.location)}</span><span className="card-arrow"><Icon name="arrow" size={15} /></span></div></Card.Content>
+    <div className="card-visual" style={{ background: report.color }}>{report.photoPath && <PrivatePhoto path={report.photoPath} /> }<div className="visual-lines" /><span className={`type-pill ${report.type}`}>{t(typeCopy[report.type].label)}</span>{report.hasPhoto && <span className="photo-label">{t('Photo')}</span>}<span className="pin"><span /></span></div>
+    <Card.Content className="card-body"><div className="card-topline"><span className="category-label">{t(report.category)}</span><span className="card-date">{showStatus ? t(statusLabel[report.status]) : t(report.dateLabel)}</span></div><h3>{report.title}</h3><p>{report.description}</p><div className="card-footer"><span className="location"><Icon name="pin" size={14} />{t(report.location)}</span><span className="card-arrow"><Icon name="arrow" size={15} /></span></div></Card.Content>
   </Card>;
+}
+
+function PrivatePhoto({ path }: { path: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+    if (!supabase) return;
+    void supabase.storage.from('foundit-photos').download(path).then(({ data, error }) => {
+      if (error || !data) return;
+      objectUrl = URL.createObjectURL(data);
+      if (active) setUrl(objectUrl);
+      else URL.revokeObjectURL(objectUrl);
+    }).catch(() => {});
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [path]);
+  return url ? <img src={url} alt="" aria-hidden="true" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} /> : null;
 }
 
 function EmptyState({ onClear }: { onClear: () => void }) {
   return <div className="empty-state"><div className="empty-pin"><Icon name="search" size={25} /></div><h3>{t('No reports match that search.')}</h3><p>{t('Try a wider search or clear your filters to see the full board.')}</p><Button className="button secondary" variant="secondary" size="sm" onPress={onClear}>{t('Clear filters')}</Button></div>;
 }
 
-function ReportDetail({ report, onBack, onClaim, onRequestReturn, showToast }: { report: Report; onBack: () => void; onClaim: () => void; onRequestReturn: () => void; showToast: (message: string) => void }) {
+function ReportDetail({ report, claim, canModerate, onBack, onClaim, onRequestReturn, showToast }: { report: Report; claim?: OwnClaim; canModerate: boolean; onBack: () => void; onClaim: () => void; onRequestReturn: () => void; showToast: (message: string) => void }) {
   const isFound = report.type === 'found';
-  return <section className="detail-page"><button className="back-link" onClick={onBack}><span>←</span> {t('Back to board')}</button><div className="detail-layout"><div className="detail-main"><div className="detail-visual" style={{ background: report.color }}><div className="visual-lines" /><span className={`type-pill ${report.type}`}>{t(typeCopy[report.type].label)}</span><span className="detail-pin"><span /></span><div className="detail-visual-caption"><span>{t('Report')} {report.id.replace('r-', '#')}</span><strong>{report.hasPhoto ? t('Photo attached') : t('No photo added')}</strong></div></div><div className="detail-header"><div><div className="eyebrow"><span className="eyebrow-line" />{t(report.category)}</div><h1>{report.title}</h1></div><span className={`status-chip ${statusTone[report.status]}`}>{t(statusLabel[report.status])}</span></div><p className="detail-description">{report.description}</p><div className="detail-facts"><div><span>{t(isFound ? 'Found' : 'Last seen')}</span><strong>{report.dateLabel.replace('Found ', '').replace('Last seen ', '')}</strong></div><div><span>{t('Location')}</span><strong>{t(report.location)}</strong></div><div><span>{isFound ? 'Stored at' : 'Reported by'}</span><strong>{isFound ? (report.storageLocation ? t(report.storageLocation) : '') : report.createdBy}</strong></div></div><div className="privacy-box"><div className="privacy-icon"><Icon name="lock" size={17} /></div><div><strong>{t('Keep identifying details private')}</strong><p>{t('Claims are only shared with the teacher reviewing this report. Don’t add passwords, codes, or full card numbers.')}</p></div></div></div><aside className="detail-side"><div className="side-card next-step"><div className="side-card-label">{t('Next step')}</div><h3>{t(isFound ? 'Could this be yours?' : 'Have you seen this item?')}</h3><p>{t(isFound ? 'Share one private detail only the owner would know. A teacher will review it.' : 'Let the reporter know if you found a lead or spotted this item around school.')}</p><Button className="button primary full" variant="primary" onPress={isFound ? onClaim : () => showToast(t('A lead form will be available soon.'))}>{t(isFound ? 'Claim this item' : 'Share a lead')} <Icon name="arrow" size={15} /></Button></div><div className="side-card report-meta"><div className="side-card-label">{t('Report details')}</div><div className="meta-row"><span>{t('Added')}</span><strong>{report.createdLabel}</strong></div><div className="meta-row"><span>{t('Reported by')}</span><strong>{report.createdBy}</strong></div>{report.responsiblePerson && <div className="meta-row"><span>{t('Responsible')}</span><strong>{report.responsiblePerson ? t(report.responsiblePerson) : ''}</strong></div>}<div className="meta-row"><span>{t('Report ID')}</span><strong>{report.id.replace('r-', '#')}</strong></div></div>{report.status === 'approved' && <Button className="quiet-action" variant="ghost" size="sm" onPress={onRequestReturn}>{t('I’m a teacher · mark returned')}</Button>}</aside></div></section>;
+  const claimPending = claim && ['pending', 'approved'].includes(claim.status);
+  const canClaim = isFound && report.status === 'approved' && !claimPending;
+  const claimLabel = claim?.status === 'approved' ? 'Claim approved' : claim?.status === 'rejected' ? 'Claim declined' : claim?.status === 'needs_more_information' ? 'More information requested' : 'Claim submitted';
+  return <section className="detail-page">
+    <button className="back-link" onClick={onBack}><span>←</span> {t('Back to board')}</button>
+    <div className="detail-layout">
+      <div className="detail-main">
+        <div className="detail-visual" style={{ background: report.color }}>{report.photoPath && <PrivatePhoto path={report.photoPath} />}<div className="visual-lines" /><span className={`type-pill ${report.type}`}>{t(typeCopy[report.type].label)}</span><span className="detail-pin"><span /></span><div className="detail-visual-caption"><span>{t('Report')} {report.id.replace('r-', '#')}</span><strong>{report.hasPhoto ? t('Photo attached') : t('No photo added')}</strong></div></div>
+        <div className="detail-header"><div><div className="eyebrow"><span className="eyebrow-line" />{t(report.category)}</div><h1>{report.title}</h1></div><span className={`status-chip ${statusTone[report.status]}`}>{t(statusLabel[report.status])}</span></div>
+        <p className="detail-description">{report.description}</p>
+        <div className="detail-facts"><div><span>{t(isFound ? 'Found' : 'Last seen')}</span><strong>{report.dateLabel.replace('Found ', '').replace('Last seen ', '')}</strong></div><div><span>{t('Location')}</span><strong>{t(report.location)}</strong></div><div><span>{isFound ? t('Stored at') : t('Reported by')}</span><strong>{isFound ? (report.storageLocation ? t(report.storageLocation) : '') : report.createdBy}</strong></div></div>
+        <div className="privacy-box"><div className="privacy-icon"><Icon name="lock" size={17} /></div><div><strong>{t('Keep identifying details private')}</strong><p>{t('Claims are only shared with the teacher reviewing this report. Don’t add passwords, codes, or full card numbers.')}</p></div></div>
+        {canModerate && <ModerationHistory key={`${report.id}-${report.status}`} reportId={report.id} />}
+      </div>
+      <aside className="detail-side">
+        <div className="side-card next-step"><div className="side-card-label">{t('Next step')}</div><h3>{t(isFound ? 'Could this be yours?' : 'Have you seen this item?')}</h3><p>{t(isFound ? 'Share one private detail only the owner would know. A teacher will review it.' : 'Let the reporter know if you found a lead or spotted this item around school.')}</p>{isFound ? <Button className="button primary full" variant="primary" isDisabled={!canClaim} onPress={canClaim ? onClaim : undefined}>{claim ? t(claimLabel) : report.status === 'claimed' ? t('Claim already approved') : t('Claim this item')} <Icon name="arrow" size={15} /></Button> : <Button className="button primary full" variant="primary" onPress={() => showToast(t('A lead form will be available soon.'))}>{t('Share a lead')} <Icon name="arrow" size={15} /></Button>}{claim && <p className="claim-status-note">{t('Claim status')}: {t(claim.status)}</p>}</div>
+        <div className="side-card report-meta"><div className="side-card-label">{t('Report details')}</div><div className="meta-row"><span>{t('Added')}</span><strong>{report.createdLabel}</strong></div><div className="meta-row"><span>{t('Reported by')}</span><strong>{report.createdBy}</strong></div>{report.responsiblePerson && <div className="meta-row"><span>{t('Responsible')}</span><strong>{t(report.responsiblePerson)}</strong></div>}<div className="meta-row"><span>{t('Report ID')}</span><strong>{report.id.replace('r-', '#')}</strong></div></div>
+        {canModerate && ['approved', 'claimed'].includes(report.status) && <Button className="quiet-action" variant="ghost" size="sm" onPress={onRequestReturn}>{t('I’m a teacher · mark returned')}</Button>}
+      </aside>
+    </div>
+  </section>;
 }
 
-function ModerationView({ reports, onOpenReport, onUpdateReport }: { reports: Report[]; onOpenReport: (id: string) => void; onUpdateReport: (id: string, patch: Partial<Report>) => void }) {
+function ModerationView({ reports, claims, onOpenReport, onDecideReport, onDecideClaim }: { reports: Report[]; claims: TeacherClaim[]; onOpenReport: (id: string) => void; onDecideReport: (id: string, status: Extract<ReportStatus, 'approved' | 'rejected' | 'returned' | 'archived'>) => void | Promise<void>; onDecideClaim: (id: string, status: Extract<TeacherClaim['status'], 'approved' | 'rejected' | 'needs_more_information'>) => void | Promise<void> }) {
   const pending = reports.filter((report) => report.status === 'pending');
-  const claims = reports.filter((report) => (report.claimCount || 0) > 0 && report.status !== 'returned');
-  return <section className="moderation-page"><div className="moderation-heading"><div><div className="eyebrow"><span className="eyebrow-line purple" />{t('Teacher workspace')}</div><h1>{t('Keep the board')}<br /><em>{t('trustworthy.')}</em></h1><p className="lede">{t('Review new reports, protect private details, and help items get home.')}</p></div><div className="moderation-badge"><span className="online-dot purple-dot" />{t('You’re viewing as')} <strong>{t('teacher')}</strong></div></div><div className="moderation-summary"><div className="mod-summary-card"><span className="summary-icon pending"><Icon name="clock" size={18} /></span><div><strong>{pending.length}</strong><span>{t('reports to review')}</span></div><span className="summary-arrow">→</span></div><div className="mod-summary-card"><span className="summary-icon claim"><Icon name="lock" size={18} /></span><div><strong>{claims.reduce((sum, report) => sum + (report.claimCount || 0), 0)}</strong><span>{t('private claims')}</span></div><span className="summary-arrow">→</span></div><div className="mod-summary-card"><span className="summary-icon returned"><Icon name="check" size={18} /></span><div><strong>{reports.filter((report) => report.status === 'returned').length + 3}</strong><span>{t('returned this month')}</span></div><span className="summary-arrow">→</span></div></div><div className="queue-heading"><div><h2>{t('Needs your attention')} <span>{pending.length + claims.length}</span></h2><p>{t('Take a look before these reports reach the wider school community.')}</p></div><Button className="button secondary" variant="secondary" size="sm"><Icon name="filter" size={16} /> {t('Filter queue')}</Button></div><div className="moderation-list">{pending.map((report) => <ModerationRow key={report.id} report={report} onOpen={() => onOpenReport(report.id)} onApprove={() => onUpdateReport(report.id, { status: 'approved' })} />)}{claims.map((report) => <ModerationRow key={`${report.id}-claim`} report={report} claim onOpen={() => onOpenReport(report.id)} onApprove={() => onUpdateReport(report.id, { status: 'approved' })} />)}{pending.length === 0 && claims.length === 0 && <div className="empty-state compact"><div className="empty-pin"><Icon name="check" size={25} /></div><h3>{t('Queue is clear.')}</h3><p>{t('Nice work. New reports will show up here.')}</p></div>}</div></section>;
+  const reportById = new Map(reports.map((report) => [report.id, report]));
+  return <section className="moderation-page"><div className="moderation-heading"><div><div className="eyebrow"><span className="eyebrow-line purple" />{t('Teacher workspace')}</div><h1>{t('Keep the board')}<br /><em>{t('trustworthy.')}</em></h1><p className="lede">{t('Review new reports, protect private details, and help items get home.')}</p></div><div className="moderation-badge"><span className="online-dot purple-dot" />{t('You’re viewing as')} <strong>{t('teacher')}</strong></div></div>
+    <div className="moderation-summary"><div className="mod-summary-card"><span className="summary-icon pending"><Icon name="clock" size={18} /></span><div><strong>{pending.length}</strong><span>{t('reports to review')}</span></div><span className="summary-arrow">→</span></div><div className="mod-summary-card"><span className="summary-icon claim"><Icon name="lock" size={18} /></span><div><strong>{claims.length}</strong><span>{t('private claims')}</span></div><span className="summary-arrow">→</span></div><div className="mod-summary-card"><span className="summary-icon returned"><Icon name="check" size={18} /></span><div><strong>{reports.filter((report) => report.status === 'returned').length}</strong><span>{t('returned this month')}</span></div><span className="summary-arrow">→</span></div></div>
+    <div className="queue-heading"><div><h2>{t('Needs your attention')} <span>{pending.length + claims.length}</span></h2><p>{t('Take a look before these reports reach the wider school community.')}</p></div></div>
+    <div className="moderation-list">{pending.map((report) => <ModerationRow key={report.id} report={report} onOpen={() => onOpenReport(report.id)} onApprove={() => onDecideReport(report.id, 'approved')} onReject={() => onDecideReport(report.id, 'rejected')} />)}{claims.map((claim) => {
+      const report = reportById.get(claim.report_id);
+      return report ? <ClaimModerationRow key={claim.id} claim={claim} report={report} onOpen={() => onOpenReport(report.id)} onDecision={(status) => onDecideClaim(claim.id, status)} /> : null;
+    })}{pending.length === 0 && claims.length === 0 && <div className="empty-state compact"><div className="empty-pin"><Icon name="check" size={25} /></div><h3>{t('Queue is clear.')}</h3><p>{t('Nice work. New reports will show up here.')}</p></div>}</div>
+  </section>;
 }
 
-function ModerationRow({ report, claim = false, onOpen, onApprove }: { report: Report; claim?: boolean; onOpen: () => void; onApprove: () => void }) {
-  return <div className="moderation-row"><div className="row-thumb" style={{ background: report.color }}><span className={`mini-type ${report.type}`} />{claim && <span className="row-lock"><Icon name="lock" size={12} /></span>}</div><div className="row-main"><div className="row-label"><span className={claim ? 'purple-label' : 'orange-label'}>{t(claim ? 'Private claim' : 'New report')}</span><span>{report.createdLabel}</span></div><h3>{report.title}</h3><p>{claim ? `${report.claimCount} ${t('private claims')} ${t('waiting for review')}` : `${t(typeCopy[report.type].label)} · ${t(report.category)} · ${t(report.location)}`}</p></div><div className="row-actions"><Button className="row-open" variant="ghost" size="sm" onPress={onOpen}>{t('Review')} <Icon name="arrow" size={14} /></Button>{!claim && <Button className="approve-button" variant="ghost" size="sm" isIconOnly onPress={onApprove} aria-label={`${t('Approve')} ${report.title}`}><Icon name="check" size={16} /></Button>}</div></div>;
+function ModerationRow({ report, onOpen, onApprove, onReject }: { report: Report; onOpen: () => void; onApprove: () => void | Promise<void>; onReject: () => void | Promise<void> }) {
+  return <div className="moderation-row"><div className="row-thumb" style={{ background: report.color }}>{report.photoPath && <PrivatePhoto path={report.photoPath} />}<span className={`mini-type ${report.type}`} /></div><div className="row-main"><div className="row-label"><span className="orange-label">{t('New report')}</span><span>{report.createdLabel}</span></div><h3>{report.title}</h3><p>{t(typeCopy[report.type].label)} · {t(report.category)} · {t(report.location)}</p></div><div className="row-actions"><Button className="row-open" variant="ghost" size="sm" onPress={onOpen}>{t('Review')} <Icon name="arrow" size={14} /></Button><Button className="approve-button" variant="ghost" size="sm" onPress={() => void onReject()} aria-label={`${t('Reject')} ${report.title}`}>{t('Reject')}</Button><Button className="approve-button" variant="ghost" size="sm" isIconOnly onPress={() => void onApprove()} aria-label={`${t('Approve')} ${report.title}`}><Icon name="check" size={16} /></Button></div></div>;
+}
+
+function ClaimModerationRow({ claim, report, onOpen, onDecision }: { claim: TeacherClaim; report: Report; onOpen: () => void; onDecision: (status: Extract<TeacherClaim['status'], 'approved' | 'rejected' | 'needs_more_information'>) => void | Promise<void> }) {
+  return <div className="moderation-row claim-review-row"><div className="row-thumb" style={{ background: report.color }}><span className={`mini-type ${report.type}`} /><span className="row-lock"><Icon name="lock" size={12} /></span></div><div className="row-main"><div className="row-label"><span className="purple-label">{t('Private claim')} · {report.title}</span><span>{formatClaimDate(claim.created_at)}</span></div><p className="private-claim-detail">{claim.private_details}</p><div className="row-actions"><Button className="row-open" variant="ghost" size="sm" onPress={onOpen}>{t('Review report')}</Button><Button className="approve-button" variant="ghost" size="sm" onPress={() => void onDecision('needs_more_information')}>{t('Ask for more information')}</Button><Button className="approve-button" variant="ghost" size="sm" onPress={() => void onDecision('rejected')}>{t('Reject claim')}</Button><Button className="approve-button" variant="ghost" size="sm" onPress={() => void onDecision('approved')}>{t('Approve claim')}</Button></div></div></div>;
+}
+
+function formatClaimDate(value: string) {
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value));
+}
+
+function ModerationHistory({ reportId }: { reportId: string }) {
+  const [events, setEvents] = useState<ModerationEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void fetchModerationHistory(reportId)
+      .then((items) => { if (active) setEvents(items); })
+      .catch(() => { if (active) setFailed(true); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [reportId]);
+  const actionLabels: Record<string, string> = {
+    report_approved: 'Report approved', report_rejected: 'Report rejected', report_returned: 'Report marked returned', report_archived: 'Report archived',
+    claim_approved: 'Claim approved', claim_rejected: 'Claim rejected', claim_needs_more_information: 'More information requested',
+  };
+  return <section className="moderation-history"><h3>{t('Moderation history')}</h3>{loading ? <p>{t('Loading moderation history…')}</p> : failed ? <p>{t('Unable to load moderation history.')}</p> : events.length === 0 ? <p>{t('No moderation actions yet.')}</p> : <ol>{events.map((event) => <li key={event.id}><strong>{t(actionLabels[event.action] || event.action)}</strong><span>{formatClaimDate(event.created_at)} · {t('Teacher')}</span>{event.notes && <p>{event.notes}</p>}</li>)}</ol>}</section>;
 }
 
 function ComposerSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
@@ -304,49 +498,85 @@ function ComposerSelect({ label, value, options, onChange }: { label: string; va
   </Select>;
 }
 
-function ReturnConfirmModal({ report, onClose, onConfirm }: { report: Report; onClose: () => void; onConfirm: () => void }) {
-  return <Modal.Backdrop isOpen onOpenChange={(open) => { if (!open) onClose(); }}><Modal.Container><Modal.Dialog className="modal confirm-modal"><Modal.CloseTrigger className="close-button" aria-label="Close return confirmation"><Icon name="close" /></Modal.CloseTrigger><Modal.Header className="modal-header"><div><div className="eyebrow"><span className="eyebrow-line purple" />{t('Teacher action')}</div><Modal.Heading>{t('Mark this report returned?')}</Modal.Heading></div></Modal.Header><Modal.Body><p className="claim-intro">{t('This will move')} <strong>{report.title}</strong> {t('out of the active board and record it as returned. You can still review its history later.')}</p></Modal.Body><Modal.Footer className="modal-footer"><Button variant="secondary" onPress={onClose}>{t('Cancel')}</Button><Button variant="primary" onPress={onConfirm}>{t('Mark returned')} <Icon name="check" size={15} /></Button></Modal.Footer></Modal.Dialog></Modal.Container></Modal.Backdrop>;
+function StorageLocationSelect({ value, options, onChange }: { value: string; options: StorageLocation[]; onChange: (value: string) => void }) {
+  return <Select className="composer-select" value={value} onChange={(nextValue) => onChange(String(nextValue || ''))}>
+    <Label>{t('Storage location')}</Label><Select.Trigger><Select.Value /></Select.Trigger><Select.Popover><ListBox>{options.map((option) => <ListBox.Item key={option.id} id={option.id} textValue={t(option.label)}>{t(option.label)}<ListBox.ItemIndicator /></ListBox.Item>)}</ListBox></Select.Popover>
+  </Select>;
 }
 
-function ReportComposer({ type, onClose, onSubmitted }: { type: ReportType; onClose: () => void; onSubmitted: (report: Report) => void }) {
+function ReturnConfirmModal({ report, onClose, onConfirm }: { report: Report; onClose: () => void; onConfirm: () => void | Promise<void> }) {
+  return <Modal.Backdrop isOpen onOpenChange={(open) => { if (!open) onClose(); }}><Modal.Container><Modal.Dialog className="modal confirm-modal"><Modal.CloseTrigger className="close-button" aria-label={t('Close return confirmation')}><Icon name="close" /></Modal.CloseTrigger><Modal.Header className="modal-header"><div><div className="eyebrow"><span className="eyebrow-line purple" />{t('Teacher action')}</div><Modal.Heading>{t('Mark this report returned?')}</Modal.Heading></div></Modal.Header><Modal.Body><p className="claim-intro">{t('This will move')} <strong>{report.title}</strong> {t('out of the active board and record it as returned. You can still review its history later.')}</p></Modal.Body><Modal.Footer className="modal-footer"><Button variant="secondary" onPress={onClose}>{t('Cancel')}</Button><Button variant="primary" onPress={() => void onConfirm()}>{t('Mark returned')} <Icon name="check" size={15} /></Button></Modal.Footer></Modal.Dialog></Modal.Container></Modal.Backdrop>;
+}
+
+function ReportComposer({ type, storageLocations, onClose, onSubmitted }: { type: ReportType; storageLocations: StorageLocation[]; onClose: () => void; onSubmitted: (input: NewReportInput) => Promise<void> }) {
   const [draftType, setDraftType] = useState<ReportType>(type);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('School supplies');
   const [location, setLocation] = useState('Main hallway');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState('');
-  const [storageLocation, setStorageLocation] = useState('Front office shelf A');
-  const [responsiblePerson, setResponsiblePerson] = useState('School admin');
-  const [photoName, setPhotoName] = useState('');
+  const [storageLocationId, setStorageLocationId] = useState(storageLocations[0]?.id || '');
+  const [photo, setPhoto] = useState<File | null>(null);
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
   const isFound = draftType === 'found';
-  const submit = (event: FormEvent) => {
+  const selectedStorage = storageLocations.find((item) => item.id === storageLocationId);
+  useEffect(() => {
+    if (!storageLocationId && storageLocations[0]) setStorageLocationId(storageLocations[0].id);
+  }, [storageLocationId, storageLocations]);
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!title.trim() || !description.trim() || !date || (isFound && (!storageLocation.trim() || !responsiblePerson.trim()))) {
+    if (title.trim().length < 2 || description.trim().length < 2 || !date || (isFound && !storageLocationId)) {
       setError('Add the required item, date, location, and description details before sending.');
       return;
     }
-    onSubmitted({ id: `r-${Date.now()}`, type: draftType, title, category, description, dateLabel: isFound ? `Found ${date}` : `Last seen ${date}`, location, storageLocation: isFound ? storageLocation : undefined, responsiblePerson: isFound ? responsiblePerson : undefined, status: isFound ? 'pending' : 'approved', ageDays: 0, createdLabel: 'Today', createdBy: 'Signed-in student', initials: 'SS', color: isFound ? '#c4e3aa' : '#f3b6aa', hasPhoto: Boolean(photoName) });
+    setSaving(true);
+    setError('');
+    try {
+      await onSubmitted({ type: draftType, title, category, description, date, location, storageLocationId: isFound ? storageLocationId : undefined, photo });
+    } catch {
+      setError('We couldn’t save your report. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
   const choosePhoto = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 5 * 1024 * 1024) {
       setError('Choose a JPG or PNG image up to 5 MB.');
+      event.target.value = '';
       return;
     }
-    setPhotoName(file.name);
+    setPhoto(file);
     setError('');
   };
-  return <Modal.Backdrop isOpen onOpenChange={(open) => { if (!open) onClose(); }}><Modal.Container><Modal.Dialog className="modal composer-modal"><Modal.CloseTrigger className="close-button" aria-label="Close report form"><Icon name="close" /></Modal.CloseTrigger><Modal.Header className="modal-header"><div><div className="eyebrow"><span className="eyebrow-line" />{t('New report')}</div><Modal.Heading>{t('Report something')} {t(isFound ? 'found' : 'missing')}</Modal.Heading></div></Modal.Header><Modal.Body><Form onSubmit={submit}><div className="type-toggle"><Button type="button" variant="tertiary" className={draftType === 'missing' ? 'selected' : ''} onPress={() => setDraftType('missing')}>{t('Missing item')}</Button><Button type="button" variant="tertiary" className={draftType === 'found' ? 'selected found-toggle' : ''} onPress={() => setDraftType('found')}>{t('Found item')}</Button></div><div className="form-grid"><TextField isRequired fullWidth name="title" value={title} onChange={setTitle}><Label>{t('Item name')}</Label><Input placeholder={t(isFound ? 'e.g. Navy blue backpack' : 'e.g. Silver water bottle')} /></TextField><ComposerSelect label={t('Category')} value={category} options={categories.slice(1)} onChange={setCategory} /><TextField isRequired fullWidth name="date" type="date" value={date} onChange={setDate}><Label>{t(isFound ? 'Date found' : 'Date last seen')}</Label><Input /></TextField><ComposerSelect label={t(isFound ? 'Location found' : 'Approximate location')} value={location} options={locations.slice(1)} onChange={setLocation} />{isFound && <TextField isRequired fullWidth name="storageLocation" value={storageLocation} onChange={setStorageLocation}><Label>{t('Storage location')}</Label><Input placeholder={t('e.g. Front office, shelf B')} /></TextField>}{isFound && <TextField isRequired fullWidth name="responsiblePerson" value={responsiblePerson} onChange={setResponsiblePerson}><Label>{t('Responsible teacher')}</Label><Input placeholder={t('e.g. Ms. Rivera')} /></TextField>}</div><TextField isRequired fullWidth className="full-field" name="description" value={description} onChange={setDescription}><Label>{t('Description')}</Label><TextArea placeholder={t('Share details that help someone recognize it. Keep private identifiers out.')} rows={4} /><Description>{t('Keep private identifiers out of the public description.')}</Description></TextField>{isFound && <div className="safety-callout"><span className="safety-icon"><Icon name="lock" size={15} /></span><p><strong>{t('Keep sensitive details private.')}</strong> {t('Don’t include passwords, access codes, full payment-card numbers, or private contact details in the public description.')}</p></div>}<div className="photo-drop"><span className="photo-plus">+</span><div><strong>{photoName || 'Add a photo'} <span>{t('Optional')}</span></strong><p>{t('JPG or PNG · up to 5 MB')}</p></div><label className="file-button">{t('Choose file')}<input type="file" accept="image/jpeg,image/png" onChange={choosePhoto} /></label></div>{error && <FieldError className="form-error">{t(error)}</FieldError>}<Modal.Footer className="modal-footer"><span className="private-note"><Icon name="lock" size={14} /> {t('Visible to signed-in school members after review')}</span><Button className="button primary" variant="primary" type="submit">{t('Send for review')} <Icon name="arrow" size={15} /></Button></Modal.Footer></Form></Modal.Body></Modal.Dialog></Modal.Container></Modal.Backdrop>;
+  return <Modal.Backdrop isOpen onOpenChange={(open) => { if (!open) onClose(); }}><Modal.Container><Modal.Dialog className="modal composer-modal"><Modal.CloseTrigger className="close-button" aria-label={t('Close report form')}><Icon name="close" /></Modal.CloseTrigger><Modal.Header className="modal-header"><div><div className="eyebrow"><span className="eyebrow-line" />{t('New report')}</div><Modal.Heading>{t('Report something')} {t(isFound ? 'found' : 'missing')}</Modal.Heading></div></Modal.Header><Modal.Body><Form onSubmit={submit}>
+    <div className="type-toggle"><Button type="button" variant="tertiary" className={draftType === 'missing' ? 'selected' : ''} onPress={() => setDraftType('missing')}>{t('Missing item')}</Button><Button type="button" variant="tertiary" className={draftType === 'found' ? 'selected found-toggle' : ''} onPress={() => setDraftType('found')}>{t('Found item')}</Button></div>
+    <div className="form-grid"><TextField isRequired fullWidth name="title" value={title} onChange={setTitle}><Label>{t('Item name')}</Label><Input placeholder={t(isFound ? 'e.g. Navy blue backpack' : 'e.g. Silver water bottle')} /></TextField><ComposerSelect label={t('Category')} value={category} options={categories.slice(1)} onChange={setCategory} /><TextField isRequired fullWidth name="date" type="date" value={date} onChange={setDate}><Label>{t(isFound ? 'Date found' : 'Date last seen')}</Label><Input /></TextField><ComposerSelect label={t(isFound ? 'Location found' : 'Approximate location')} value={location} options={locations.slice(1)} onChange={setLocation} />{isFound && <><StorageLocationSelect value={storageLocationId} options={storageLocations} onChange={setStorageLocationId} />{selectedStorage && <div className="field-note">{t('Responsible')}: {t(selectedStorage.responsible_name)}</div>}</>}</div>
+    <TextField isRequired fullWidth className="full-field" name="description" value={description} onChange={setDescription}><Label>{t('Description')}</Label><TextArea placeholder={t('Share details that help someone recognize it. Keep private identifiers out.')} rows={4} /><Description>{t('Keep private identifiers out of the public description.')}</Description></TextField>
+    {isFound && <div className="safety-callout"><span className="safety-icon"><Icon name="lock" size={15} /></span><p><strong>{t('Keep sensitive details private.')}</strong> {t('Don’t include passwords, access codes, full payment-card numbers, or private contact details in the public description.')}</p></div>}
+    <div className="photo-drop"><span className="photo-plus">+</span><div><strong>{photo?.name || t('Add a photo')} <span>{t('Optional')}</span></strong><p>{t('JPG or PNG · up to 5 MB')}</p></div><label className="file-button">{t('Choose file')}<input type="file" accept="image/jpeg,image/png" onChange={choosePhoto} /></label></div>
+    {error && <FieldError className="form-error">{t(error)}</FieldError>}
+    <Modal.Footer className="modal-footer"><span className="private-note"><Icon name="lock" size={14} /> {t('Visible to signed-in school members after review')}</span><Button className="button primary" variant="primary" type="submit" isDisabled={saving}>{t(saving ? 'Saving…' : isFound ? 'Send for review' : 'Publish missing report')} <Icon name="arrow" size={15} /></Button></Modal.Footer>
+  </Form></Modal.Body></Modal.Dialog></Modal.Container></Modal.Backdrop>;
 }
 
-function ClaimModal({ report, onClose, onSubmitted }: { report: Report; onClose: () => void; onSubmitted: () => void }) {
+function ClaimModal({ report, onClose, onSubmitted }: { report: Report; onClose: () => void; onSubmitted: (details: string) => Promise<void> }) {
   const { language } = useI18n();
   const [details, setDetails] = useState('');
   const [error, setError] = useState('');
-  const submit = (event: FormEvent) => { event.preventDefault(); if (details.trim().length < 12) { setError('Add a little more detail so the teacher can verify your claim privately.'); return; } onSubmitted(); };
-  return <Modal.Backdrop isOpen onOpenChange={(open) => { if (!open) onClose(); }}><Modal.Container><Modal.Dialog className="modal claim-modal"><Modal.CloseTrigger className="close-button" aria-label="Close claim form"><Icon name="close" /></Modal.CloseTrigger><Modal.Header className="modal-header"><div><div className="eyebrow"><span className="eyebrow-line purple" />{t('Private claim')}</div><Modal.Heading>{language === 'th' ? `สิ่งนี้คือ ${report.title} ของคุณหรือไม่?` : `Is this your ${report.title.toLowerCase()}?`}</Modal.Heading></div></Modal.Header><Modal.Body><Form onSubmit={submit}><p className="claim-intro">{t('Tell')} <strong>Ms. Rivera</strong> {t('one detail that won’t be visible on the public board. It helps keep the process fair and protects your privacy.')}</p><TextField isRequired minLength={12} fullWidth name="privateDetails" value={details} onChange={setDetails} isInvalid={Boolean(error)}><Label>{t('Private identifying detail')}</Label><TextArea placeholder={t('Example: There’s a small blue thread repair on the inside pocket.')} rows={5} />{error ? <FieldError className="form-error">{t(error)}</FieldError> : <Description>{t('Share one detail only the owner would know.')}</Description>}</TextField><div className="private-banner"><Icon name="lock" size={16} /><span>{t('Your note goes only to the teacher reviewing this report.')}</span></div><Modal.Footer className="modal-footer"><Button className="button secondary" variant="secondary" type="button" onPress={onClose}>{t('Cancel')}</Button><Button className="button primary" variant="primary" type="submit">{t('Send private claim')} <Icon name="arrow" size={15} /></Button></Modal.Footer></Form></Modal.Body></Modal.Dialog></Modal.Container></Modal.Backdrop>;
+  const [saving, setSaving] = useState(false);
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (details.trim().length < 12) { setError('Add a little more detail so the teacher can verify your claim privately.'); return; }
+    setSaving(true);
+    setError('');
+    try { await onSubmitted(details); }
+    catch { setError('We couldn’t send your claim. Please try again.'); }
+    finally { setSaving(false); }
+  };
+  return <Modal.Backdrop isOpen onOpenChange={(open) => { if (!open) onClose(); }}><Modal.Container><Modal.Dialog className="modal claim-modal"><Modal.CloseTrigger className="close-button" aria-label={t('Close claim form')}><Icon name="close" /></Modal.CloseTrigger><Modal.Header className="modal-header"><div><div className="eyebrow"><span className="eyebrow-line purple" />{t('Private claim')}</div><Modal.Heading>{language === 'th' ? `สิ่งนี้คือ ${report.title} ของคุณหรือไม่?` : `Is this your ${report.title.toLowerCase()}?`}</Modal.Heading></div></Modal.Header><Modal.Body><Form onSubmit={submit}><p className="claim-intro">{t('Tell')} <strong>{t('your teacher')}</strong> {t('one detail that won’t be visible on the public board. It helps keep the process fair and protects your privacy.')}</p><TextField isRequired minLength={12} fullWidth name="privateDetails" value={details} onChange={setDetails} isInvalid={Boolean(error)}><Label>{t('Private identifying detail')}</Label><TextArea placeholder={t('Example: There’s a small blue thread repair on the inside pocket.')} rows={5} />{error ? <FieldError className="form-error">{t(error)}</FieldError> : <Description>{t('Share one detail only the owner would know.')}</Description>}</TextField><div className="private-banner"><Icon name="lock" size={16} /><span>{t('Your note goes only to the teacher reviewing this report.')}</span></div><Modal.Footer className="modal-footer"><Button variant="secondary" type="button" onPress={onClose}>{t('Cancel')}</Button><Button className="button primary" variant="primary" type="submit" isDisabled={saving}>{t(saving ? 'Saving…' : 'Send private claim')} <Icon name="arrow" size={15} /></Button></Modal.Footer></Form></Modal.Body></Modal.Dialog></Modal.Container></Modal.Backdrop>;
 }
 
 export default App;

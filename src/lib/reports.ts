@@ -15,9 +15,11 @@ export type Report = {
   ageDays: number;
   createdLabel: string;
   createdBy: string;
+  createdById?: string;
   initials: string;
   color: string;
   hasPhoto?: boolean;
+  photoPath?: string;
   claimCount?: number;
 };
 
@@ -171,7 +173,7 @@ export const initialReports: Report[] = [
 export const statusLabel: Record<ReportStatus, string> = {
   pending: 'Pending review',
   approved: 'Live on board',
-  claimed: 'Claim in review',
+  claimed: 'Claim approved',
   returned: 'Returned',
   rejected: 'Rejected',
   archived: 'Archived',
