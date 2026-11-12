@@ -37,6 +37,14 @@ import { setLanguage, t, useI18n } from './lib/i18n';
 
 type View = 'board' | 'moderation';
 
+function currentLocalDateForInput() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 type IconName = 'search' | 'plus' | 'grid' | 'inbox' | 'settings' | 'chevron' | 'arrow' | 'clock' | 'lock' | 'check' | 'close' | 'filter' | 'photo' | 'label';
 
 function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
@@ -522,7 +530,7 @@ function ReportComposer({ type, storageLocations, onClose, onSubmitted }: { type
   const [category, setCategory] = useState('School supplies');
   const [location, setLocation] = useState('Main hallway');
   const [description, setDescription] = useState('');
-  const [date, setDate] = useState('');
+  const [date, setDate] = useState(() => type === 'found' ? currentLocalDateForInput() : '');
   const [storageLocationId, setStorageLocationId] = useState(storageLocations[0]?.id || '');
   const [photo, setPhoto] = useState<File | null>(null);
   const [error, setError] = useState('');
@@ -560,7 +568,7 @@ function ReportComposer({ type, storageLocations, onClose, onSubmitted }: { type
     setError('');
   };
   return <Modal.Backdrop isOpen onOpenChange={(open) => { if (!open) onClose(); }}><Modal.Container><Modal.Dialog className="modal composer-modal"><Modal.CloseTrigger className="close-button" aria-label={t('Close report form')}><Icon name="close" /></Modal.CloseTrigger><Modal.Header className="modal-header"><div><div className="eyebrow"><span className="eyebrow-line" />{t('New report')}</div><Modal.Heading>{t('Report something')} {t(isFound ? 'found' : 'missing')}</Modal.Heading></div></Modal.Header><Modal.Body><Form onSubmit={submit}>
-    <div className="type-toggle"><Button type="button" variant="tertiary" className={draftType === 'missing' ? 'selected' : ''} onPress={() => setDraftType('missing')}>{t('Missing item')}</Button><Button type="button" variant="tertiary" className={draftType === 'found' ? 'selected found-toggle' : ''} onPress={() => setDraftType('found')}>{t('Found item')}</Button></div>
+    <div className="type-toggle"><Button type="button" variant="tertiary" className={draftType === 'missing' ? 'selected' : ''} onPress={() => setDraftType('missing')}>{t('Missing item')}</Button><Button type="button" variant="tertiary" className={draftType === 'found' ? 'selected found-toggle' : ''} onPress={() => { setDraftType('found'); setDate((currentDate) => currentDate || currentLocalDateForInput()); }}>{t('Found item')}</Button></div>
     <div className="form-grid"><TextField isRequired fullWidth name="title" value={title} onChange={setTitle}><Label>{t('Item name')}</Label><Input placeholder={t(isFound ? 'e.g. Navy blue backpack' : 'e.g. Silver water bottle')} /></TextField><ComposerSelect label={t('Category')} value={category} options={categories.slice(1)} onChange={setCategory} /><TextField isRequired fullWidth name="date" type="date" value={date} onChange={setDate}><Label>{t(isFound ? 'Date found' : 'Date last seen')}</Label><Input /></TextField><ComposerSelect label={t(isFound ? 'Location found' : 'Approximate location')} value={location} options={locations.slice(1)} onChange={setLocation} />{isFound && <><StorageLocationSelect value={storageLocationId} options={storageLocations} onChange={setStorageLocationId} />{selectedStorage && <div className="field-note">{t('Responsible')}: {t(selectedStorage.responsible_name)}</div>}</>}</div>
     <TextField isRequired fullWidth className="full-field" name="description" value={description} onChange={setDescription}><Label>{t('Description')}</Label><TextArea placeholder={t('Share details that help someone recognize it. Keep private identifiers out.')} rows={4} /><Description>{t('Keep private identifiers out of the public description.')}</Description></TextField>
     {isFound && <div className="safety-callout"><span className="safety-icon"><Icon name="lock" size={15} /></span><p><strong>{t('Keep sensitive details private.')}</strong> {t('Don’t include passwords, access codes, full payment-card numbers, or private contact details in the public description.')}</p></div>}
