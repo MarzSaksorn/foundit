@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent, FormEvent, ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { Button, Card, Description, FieldError, Form, Input, Label, ListBox, Modal, Select, TextArea, TextField } from '@heroui/react';
+import { Button, Calendar, Card, Description, FieldError, Form, Input, Label, ListBox, Modal, Select, TextArea, TextField } from '@heroui/react';
+import { parseDate } from '@internationalized/date';
 import {
   categories,
   filterReports,
@@ -46,6 +47,12 @@ function currentLocalDateForInput() {
 }
 
 const FUTURE_FOUND_DATE_ERROR = 'Date found cannot be in the future.';
+
+function formatSelectedDate(value: string) {
+  const selectedDate = parseDate(value).toDate('UTC');
+  const locale = document.documentElement.lang || 'en';
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(selectedDate);
+}
 
 type IconName = 'search' | 'plus' | 'grid' | 'inbox' | 'settings' | 'chevron' | 'arrow' | 'clock' | 'lock' | 'check' | 'close' | 'filter' | 'photo' | 'label';
 
@@ -533,6 +540,9 @@ function ReportComposer({ type, storageLocations, onClose, onSubmitted }: { type
   const [location, setLocation] = useState('Main hallway');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(() => type === 'found' ? currentLocalDateForInput() : '');
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const calendarDate = useMemo(() => date ? parseDate(date) : null, [date]);
+  const foundDateLimit = useMemo(() => parseDate(currentLocalDateForInput()), []);
   const [storageLocationId, setStorageLocationId] = useState(storageLocations[0]?.id || '');
   const [photo, setPhoto] = useState<File | null>(null);
   const [error, setError] = useState('');
@@ -573,15 +583,45 @@ function ReportComposer({ type, storageLocations, onClose, onSubmitted }: { type
     setPhoto(file);
     setError('');
   };
-  return <Modal.Backdrop isOpen onOpenChange={(open) => { if (!open) onClose(); }}><Modal.Container><Modal.Dialog className="modal composer-modal"><Modal.CloseTrigger className="close-button" aria-label={t('Close report form')}><Icon name="close" /></Modal.CloseTrigger><Modal.Header className="modal-header"><div><div className="eyebrow"><span className="eyebrow-line" />{t('New report')}</div><Modal.Heading>{t('Report something')} {t(isFound ? 'found' : 'missing')}</Modal.Heading></div></Modal.Header><Modal.Body><Form onSubmit={submit}>
-    <div className="type-toggle"><Button type="button" variant="tertiary" className={draftType === 'missing' ? 'selected' : ''} onPress={() => { setDraftType('missing'); if (error === FUTURE_FOUND_DATE_ERROR) setError(''); }}>{t('Missing item')}</Button><Button type="button" variant="tertiary" className={draftType === 'found' ? 'selected found-toggle' : ''} onPress={() => { setDraftType('found'); setDate((currentDate) => currentDate || currentLocalDateForInput()); }}>{t('Found item')}</Button></div>
-    <div className="form-grid"><TextField isRequired fullWidth name="title" value={title} onChange={setTitle}><Label>{t('Item name')}</Label><Input placeholder={t(isFound ? 'e.g. Navy blue backpack' : 'e.g. Silver water bottle')} /></TextField><ComposerSelect label={t('Category')} value={category} options={categories.slice(1)} onChange={setCategory} /><TextField isRequired fullWidth name="date" type="date" value={date} onChange={(nextDate) => { setDate(nextDate); if (error === FUTURE_FOUND_DATE_ERROR) setError(''); }} isInvalid={error === FUTURE_FOUND_DATE_ERROR}><Label>{t(isFound ? 'Date found' : 'Date last seen')}</Label><Input max={isFound ? currentLocalDateForInput() : undefined} onInvalid={(event) => { if (isFound && event.currentTarget.validity.rangeOverflow) setError(FUTURE_FOUND_DATE_ERROR); }} />{error === FUTURE_FOUND_DATE_ERROR && <FieldError className="form-error">{t(error)}</FieldError>}</TextField><ComposerSelect label={t(isFound ? 'Location found' : 'Approximate location')} value={location} options={locations.slice(1)} onChange={setLocation} />{isFound && <><StorageLocationSelect value={storageLocationId} options={storageLocations} onChange={setStorageLocationId} />{selectedStorage && <div className="field-note">{t('Responsible')}: {t(selectedStorage.responsible_name)}</div>}</>}</div>
+  return <><Modal.Backdrop isOpen onOpenChange={(open) => { if (!open) onClose(); }}><Modal.Container><Modal.Dialog className="modal composer-modal"><Modal.CloseTrigger className="close-button" aria-label={t('Close report form')}><Icon name="close" /></Modal.CloseTrigger><Modal.Header className="modal-header"><div><div className="eyebrow"><span className="eyebrow-line" />{t('New report')}</div><Modal.Heading>{t('Report something')} {t(isFound ? 'found' : 'missing')}</Modal.Heading></div></Modal.Header><Modal.Body><Form onSubmit={submit}>
+    <div className="type-toggle"><Button type="button" variant="tertiary" className={draftType === 'missing' ? 'selected' : ''} onPress={() => { setDraftType('missing'); if (error === FUTURE_FOUND_DATE_ERROR) setError(''); }}>{t('Missing item')}</Button><Button type="button" variant="tertiary" className={draftType === 'found' ? 'selected found-toggle' : ''} onPress={() => { setDraftType('found'); setDate((currentDate) => currentDate || currentLocalDateForInput()); if (date > currentLocalDateForInput()) setError(FUTURE_FOUND_DATE_ERROR); else if (error === FUTURE_FOUND_DATE_ERROR) setError(''); }}>{t('Found item')}</Button></div>
+    <div className="form-grid"><TextField isRequired fullWidth name="title" value={title} onChange={setTitle}><Label>{t('Item name')}</Label><Input placeholder={t(isFound ? 'e.g. Navy blue backpack' : 'e.g. Silver water bottle')} /></TextField><ComposerSelect label={t('Category')} value={category} options={categories.slice(1)} onChange={setCategory} /><div className="report-date-field"><Label id="report-date-label" isRequired>{t(isFound ? 'Date found' : 'Date last seen')}</Label><Button type="button" variant="secondary" className="button secondary date-picker-trigger" onPress={() => setIsCalendarOpen(true)} aria-haspopup="dialog" aria-expanded={isCalendarOpen} aria-labelledby="report-date-label report-date-value" aria-describedby={error === FUTURE_FOUND_DATE_ERROR ? 'report-date-error' : undefined}><span id="report-date-value">{date ? formatSelectedDate(date) : t('Choose date')}</span><Icon name="arrow" size={15} /></Button>{error === FUTURE_FOUND_DATE_ERROR && <div id="report-date-error" role="alert" className="form-error">{t(error)}</div>}</div><ComposerSelect label={t(isFound ? 'Location found' : 'Approximate location')} value={location} options={locations.slice(1)} onChange={setLocation} />{isFound && <><StorageLocationSelect value={storageLocationId} options={storageLocations} onChange={setStorageLocationId} />{selectedStorage && <div className="field-note">{t('Responsible')}: {t(selectedStorage.responsible_name)}</div>}</>}</div>
     <TextField isRequired fullWidth className="full-field" name="description" value={description} onChange={setDescription}><Label>{t('Description')}</Label><TextArea placeholder={t('Share details that help someone recognize it. Keep private identifiers out.')} rows={4} /><Description>{t('Keep private identifiers out of the public description.')}</Description></TextField>
     {isFound && <div className="safety-callout"><span className="safety-icon"><Icon name="lock" size={15} /></span><p><strong>{t('Keep sensitive details private.')}</strong> {t('Don’t include passwords, access codes, full payment-card numbers, or private contact details in the public description.')}</p></div>}
     <div className="photo-drop"><span className="photo-plus">+</span><div><strong>{photo?.name || t('Add a photo')} <span>{t('Optional')}</span></strong><p>{t('JPG or PNG · up to 5 MB')}</p></div><label className="file-button">{t('Choose file')}<input type="file" accept="image/jpeg,image/png" onChange={choosePhoto} /></label></div>
     {error && error !== FUTURE_FOUND_DATE_ERROR && <FieldError className="form-error">{t(error)}</FieldError>}
     <Modal.Footer className="modal-footer"><span className="private-note"><Icon name="lock" size={14} /> {t('Visible to signed-in school members after review')}</span><Button className="button primary" variant="primary" type="submit" isDisabled={saving}>{t(saving ? 'Saving…' : isFound ? 'Send for review' : 'Publish missing report')} <Icon name="arrow" size={15} /></Button></Modal.Footer>
-  </Form></Modal.Body></Modal.Dialog></Modal.Container></Modal.Backdrop>;
+  </Form></Modal.Body></Modal.Dialog></Modal.Container></Modal.Backdrop>
+    {isCalendarOpen && <Modal.Backdrop className="calendar-screen-backdrop" isOpen onOpenChange={(open) => { if (!open) setIsCalendarOpen(false); }}>
+      <Modal.Container className="calendar-screen-container">
+        <Modal.Dialog id="report-date-calendar" className="modal calendar-screen-dialog">
+          <Modal.Header className="modal-header calendar-screen-header">
+            <div><div className="eyebrow"><span className="eyebrow-line purple" />{t('Choose date')}</div><Modal.Heading>{t(isFound ? 'Date found' : 'Date last seen')}</Modal.Heading></div>
+            <Modal.CloseTrigger className="close-button" aria-label={t('Close date chooser')}><Icon name="close" /></Modal.CloseTrigger>
+          </Modal.Header>
+          <Modal.Body className="calendar-screen-body">
+            <Calendar.Root className="date-calendar" aria-label={t(isFound ? 'Date found' : 'Date last seen')} value={calendarDate} maxValue={isFound ? foundDateLimit : undefined} onChange={(selectedDate) => {
+              if (!selectedDate) return;
+              const isoDate = selectedDate.toDate('UTC').toISOString().slice(0, 10);
+              setDate(isoDate);
+              if (error === FUTURE_FOUND_DATE_ERROR) setError('');
+              setIsCalendarOpen(false);
+            }}>
+              <Calendar.Header className="date-calendar-header">
+                <Calendar.NavButton slot="previous" aria-label={t('Previous month')}><Icon name="arrow" size={18} /></Calendar.NavButton>
+                <Calendar.Heading />
+                <Calendar.NavButton slot="next" aria-label={t('Next month')}><Icon name="arrow" size={18} /></Calendar.NavButton>
+              </Calendar.Header>
+              <Calendar.Grid className="date-calendar-grid">
+                <Calendar.GridHeader>{(day) => <Calendar.HeaderCell>{day}</Calendar.HeaderCell>}</Calendar.GridHeader>
+                <Calendar.GridBody>{(calendarDay) => <Calendar.Cell className="date-calendar-cell" date={calendarDay}>{calendarDay.day}</Calendar.Cell>}</Calendar.GridBody>
+              </Calendar.Grid>
+            </Calendar.Root>
+          </Modal.Body>
+        </Modal.Dialog>
+      </Modal.Container>
+    </Modal.Backdrop>}
+  </>;
 }
 
 function ClaimModal({ report, onClose, onSubmitted }: { report: Report; onClose: () => void; onSubmitted: (details: string) => Promise<void> }) {
