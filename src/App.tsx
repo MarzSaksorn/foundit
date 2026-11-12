@@ -45,6 +45,8 @@ function currentLocalDateForInput() {
   return `${year}-${month}-${day}`;
 }
 
+const FUTURE_FOUND_DATE_ERROR = 'Date found cannot be in the future.';
+
 type IconName = 'search' | 'plus' | 'grid' | 'inbox' | 'settings' | 'chevron' | 'arrow' | 'clock' | 'lock' | 'check' | 'close' | 'filter' | 'photo' | 'label';
 
 function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
@@ -542,6 +544,10 @@ function ReportComposer({ type, storageLocations, onClose, onSubmitted }: { type
   }, [storageLocationId, storageLocations]);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (isFound && date > currentLocalDateForInput()) {
+      setError(FUTURE_FOUND_DATE_ERROR);
+      return;
+    }
     if (title.trim().length < 2 || description.trim().length < 2 || !date || (isFound && !storageLocationId)) {
       setError('Add the required item, date, location, and description details before sending.');
       return;
@@ -568,12 +574,12 @@ function ReportComposer({ type, storageLocations, onClose, onSubmitted }: { type
     setError('');
   };
   return <Modal.Backdrop isOpen onOpenChange={(open) => { if (!open) onClose(); }}><Modal.Container><Modal.Dialog className="modal composer-modal"><Modal.CloseTrigger className="close-button" aria-label={t('Close report form')}><Icon name="close" /></Modal.CloseTrigger><Modal.Header className="modal-header"><div><div className="eyebrow"><span className="eyebrow-line" />{t('New report')}</div><Modal.Heading>{t('Report something')} {t(isFound ? 'found' : 'missing')}</Modal.Heading></div></Modal.Header><Modal.Body><Form onSubmit={submit}>
-    <div className="type-toggle"><Button type="button" variant="tertiary" className={draftType === 'missing' ? 'selected' : ''} onPress={() => setDraftType('missing')}>{t('Missing item')}</Button><Button type="button" variant="tertiary" className={draftType === 'found' ? 'selected found-toggle' : ''} onPress={() => { setDraftType('found'); setDate((currentDate) => currentDate || currentLocalDateForInput()); }}>{t('Found item')}</Button></div>
-    <div className="form-grid"><TextField isRequired fullWidth name="title" value={title} onChange={setTitle}><Label>{t('Item name')}</Label><Input placeholder={t(isFound ? 'e.g. Navy blue backpack' : 'e.g. Silver water bottle')} /></TextField><ComposerSelect label={t('Category')} value={category} options={categories.slice(1)} onChange={setCategory} /><TextField isRequired fullWidth name="date" type="date" value={date} onChange={setDate}><Label>{t(isFound ? 'Date found' : 'Date last seen')}</Label><Input /></TextField><ComposerSelect label={t(isFound ? 'Location found' : 'Approximate location')} value={location} options={locations.slice(1)} onChange={setLocation} />{isFound && <><StorageLocationSelect value={storageLocationId} options={storageLocations} onChange={setStorageLocationId} />{selectedStorage && <div className="field-note">{t('Responsible')}: {t(selectedStorage.responsible_name)}</div>}</>}</div>
+    <div className="type-toggle"><Button type="button" variant="tertiary" className={draftType === 'missing' ? 'selected' : ''} onPress={() => { setDraftType('missing'); if (error === FUTURE_FOUND_DATE_ERROR) setError(''); }}>{t('Missing item')}</Button><Button type="button" variant="tertiary" className={draftType === 'found' ? 'selected found-toggle' : ''} onPress={() => { setDraftType('found'); setDate((currentDate) => currentDate || currentLocalDateForInput()); }}>{t('Found item')}</Button></div>
+    <div className="form-grid"><TextField isRequired fullWidth name="title" value={title} onChange={setTitle}><Label>{t('Item name')}</Label><Input placeholder={t(isFound ? 'e.g. Navy blue backpack' : 'e.g. Silver water bottle')} /></TextField><ComposerSelect label={t('Category')} value={category} options={categories.slice(1)} onChange={setCategory} /><TextField isRequired fullWidth name="date" type="date" value={date} onChange={(nextDate) => { setDate(nextDate); if (error === FUTURE_FOUND_DATE_ERROR) setError(''); }} isInvalid={error === FUTURE_FOUND_DATE_ERROR}><Label>{t(isFound ? 'Date found' : 'Date last seen')}</Label><Input max={isFound ? currentLocalDateForInput() : undefined} onInvalid={(event) => { if (isFound && event.currentTarget.validity.rangeOverflow) setError(FUTURE_FOUND_DATE_ERROR); }} />{error === FUTURE_FOUND_DATE_ERROR && <FieldError className="form-error">{t(error)}</FieldError>}</TextField><ComposerSelect label={t(isFound ? 'Location found' : 'Approximate location')} value={location} options={locations.slice(1)} onChange={setLocation} />{isFound && <><StorageLocationSelect value={storageLocationId} options={storageLocations} onChange={setStorageLocationId} />{selectedStorage && <div className="field-note">{t('Responsible')}: {t(selectedStorage.responsible_name)}</div>}</>}</div>
     <TextField isRequired fullWidth className="full-field" name="description" value={description} onChange={setDescription}><Label>{t('Description')}</Label><TextArea placeholder={t('Share details that help someone recognize it. Keep private identifiers out.')} rows={4} /><Description>{t('Keep private identifiers out of the public description.')}</Description></TextField>
     {isFound && <div className="safety-callout"><span className="safety-icon"><Icon name="lock" size={15} /></span><p><strong>{t('Keep sensitive details private.')}</strong> {t('Don’t include passwords, access codes, full payment-card numbers, or private contact details in the public description.')}</p></div>}
     <div className="photo-drop"><span className="photo-plus">+</span><div><strong>{photo?.name || t('Add a photo')} <span>{t('Optional')}</span></strong><p>{t('JPG or PNG · up to 5 MB')}</p></div><label className="file-button">{t('Choose file')}<input type="file" accept="image/jpeg,image/png" onChange={choosePhoto} /></label></div>
-    {error && <FieldError className="form-error">{t(error)}</FieldError>}
+    {error && error !== FUTURE_FOUND_DATE_ERROR && <FieldError className="form-error">{t(error)}</FieldError>}
     <Modal.Footer className="modal-footer"><span className="private-note"><Icon name="lock" size={14} /> {t('Visible to signed-in school members after review')}</span><Button className="button primary" variant="primary" type="submit" isDisabled={saving}>{t(saving ? 'Saving…' : isFound ? 'Send for review' : 'Publish missing report')} <Icon name="arrow" size={15} /></Button></Modal.Footer>
   </Form></Modal.Body></Modal.Dialog></Modal.Container></Modal.Backdrop>;
 }

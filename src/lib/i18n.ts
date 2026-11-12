@@ -215,6 +215,7 @@ const translations: Record<Language, Record<string, string>> = {
     'Saving…': 'กำลังบันทึก…',
     'Publish missing report': 'เผยแพร่รายงานของหาย',
     'We couldn’t save your report. Please try again.': 'บันทึกรายงานไม่สำเร็จ โปรดลองอีกครั้ง',
+    'Date found cannot be in the future.': 'วันที่พบต้องไม่เป็นวันในอนาคต',
     'We couldn’t send your claim. Please try again.': 'ส่งคำขอเคลมไม่สำเร็จ โปรดลองอีกครั้ง',
     'your teacher': 'ครูของคุณ',
     'Claim already approved': 'มีคำขอเคลมได้รับอนุมัติแล้ว',
