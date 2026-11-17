@@ -545,10 +545,20 @@ function ReportComposer({ type, storageLocations, onClose, onSubmitted }: { type
   const foundDateLimit = useMemo(() => parseDate(currentLocalDateForInput()), []);
   const [storageLocationId, setStorageLocationId] = useState(storageLocations[0]?.id || '');
   const [photo, setPhoto] = useState<File | null>(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const isFound = draftType === 'found';
   const selectedStorage = storageLocations.find((item) => item.id === storageLocationId);
+  useEffect(() => {
+    if (!photo) {
+      setPhotoPreviewUrl(null);
+      return;
+    }
+    const previewUrl = URL.createObjectURL(photo);
+    setPhotoPreviewUrl(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [photo]);
   useEffect(() => {
     if (!storageLocationId && storageLocations[0]) setStorageLocationId(storageLocations[0].id);
   }, [storageLocationId, storageLocations]);
@@ -582,15 +592,16 @@ function ReportComposer({ type, storageLocations, onClose, onSubmitted }: { type
     }
     setPhoto(file);
     setError('');
+    event.target.value = '';
   };
   return <><Modal.Backdrop isOpen onOpenChange={(open) => { if (!open) onClose(); }}><Modal.Container><Modal.Dialog className="modal composer-modal"><Modal.CloseTrigger className="close-button" aria-label={t('Close report form')}><Icon name="close" /></Modal.CloseTrigger><Modal.Header className="modal-header"><div><div className="eyebrow"><span className="eyebrow-line" />{t('New report')}</div><Modal.Heading>{t('Report something')} {t(isFound ? 'found' : 'missing')}</Modal.Heading></div></Modal.Header><Modal.Body><Form onSubmit={submit}>
     <div className="type-toggle"><Button type="button" variant="tertiary" className={draftType === 'missing' ? 'selected' : ''} onPress={() => { setDraftType('missing'); if (error === FUTURE_FOUND_DATE_ERROR) setError(''); }}>{t('Missing item')}</Button><Button type="button" variant="tertiary" className={draftType === 'found' ? 'selected found-toggle' : ''} onPress={() => { setDraftType('found'); setDate((currentDate) => currentDate || currentLocalDateForInput()); if (date > currentLocalDateForInput()) setError(FUTURE_FOUND_DATE_ERROR); else if (error === FUTURE_FOUND_DATE_ERROR) setError(''); }}>{t('Found item')}</Button></div>
     <div className="form-grid"><TextField isRequired fullWidth name="title" value={title} onChange={setTitle}><Label>{t('Item name')}</Label><Input placeholder={t(isFound ? 'e.g. Navy blue backpack' : 'e.g. Silver water bottle')} /></TextField><ComposerSelect label={t('Category')} value={category} options={categories.slice(1)} onChange={setCategory} /><div className="report-date-field"><Label id="report-date-label" isRequired>{t(isFound ? 'Date found' : 'Date last seen')}</Label><Button type="button" variant="secondary" className="button secondary date-picker-trigger" onPress={() => setIsCalendarOpen(true)} aria-haspopup="dialog" aria-expanded={isCalendarOpen} aria-labelledby="report-date-label report-date-value" aria-describedby={error === FUTURE_FOUND_DATE_ERROR ? 'report-date-error' : undefined}><span id="report-date-value">{date ? formatSelectedDate(date) : t('Choose date')}</span><Icon name="arrow" size={15} /></Button>{error === FUTURE_FOUND_DATE_ERROR && <div id="report-date-error" role="alert" className="form-error">{t(error)}</div>}</div><ComposerSelect label={t(isFound ? 'Location found' : 'Approximate location')} value={location} options={locations.slice(1)} onChange={setLocation} />{isFound && <><StorageLocationSelect value={storageLocationId} options={storageLocations} onChange={setStorageLocationId} />{selectedStorage && <div className="field-note">{t('Responsible')}: {t(selectedStorage.responsible_name)}</div>}</>}</div>
     <TextField isRequired fullWidth className="full-field" name="description" value={description} onChange={setDescription}><Label>{t('Description')}</Label><TextArea placeholder={t('Share details that help someone recognize it. Keep private identifiers out.')} rows={4} /><Description>{t('Keep private identifiers out of the public description.')}</Description></TextField>
     {isFound && <div className="safety-callout"><span className="safety-icon"><Icon name="lock" size={15} /></span><p><strong>{t('Keep sensitive details private.')}</strong> {t('Don’t include passwords, access codes, full payment-card numbers, or private contact details in the public description.')}</p></div>}
-    <div className="photo-drop"><span className="photo-plus">+</span><div><strong>{photo?.name || t('Add a photo')} <span>{t('Optional')}</span></strong><p>{t('JPG or PNG · up to 5 MB')}</p></div><label className="file-button">{t('Choose file')}<input type="file" accept="image/jpeg,image/png" onChange={choosePhoto} /></label></div>
+    <div className={`photo-drop${photo ? ' has-selected-photo' : ''}`}>{photo && photoPreviewUrl ? <img className="photo-upload-preview" src={photoPreviewUrl} alt={t('Selected item photo preview')} /> : <span className="photo-plus">+</span>}<div className="photo-drop-copy"><strong>{photo?.name || t('Add a photo')} {!photo && <span>{t('Optional')}</span>}</strong><p>{t(photo ? 'Photo ready to upload with report' : 'JPG or PNG · up to 5 MB')}</p></div>{photo && <button type="button" className="photo-remove-button" onClick={() => setPhoto(null)}>{t('Remove photo')}</button>}<label className="file-button">{t(photo ? 'Replace photo' : 'Choose file')}<input type="file" accept="image/jpeg,image/png" onChange={choosePhoto} /></label></div>
     {error && error !== FUTURE_FOUND_DATE_ERROR && <FieldError className="form-error">{t(error)}</FieldError>}
-    <Modal.Footer className="modal-footer"><span className="private-note"><Icon name="lock" size={14} /> {t('Visible to signed-in school members after review')}</span><Button className="button primary" variant="primary" type="submit" isDisabled={saving}>{t(saving ? 'Saving…' : isFound ? 'Send for review' : 'Publish missing report')} <Icon name="arrow" size={15} /></Button></Modal.Footer>
+    <Modal.Footer className="modal-footer"><span className="private-note"><Icon name="lock" size={14} /> {t('Visible to signed-in school members after review')}</span><Button className="button primary" variant="primary" type="submit" isDisabled={saving}>{t(saving ? photo ? 'Uploading photo and saving…' : 'Saving…' : isFound ? 'Send for review' : 'Publish missing report')} <Icon name="arrow" size={15} /></Button></Modal.Footer>
   </Form></Modal.Body></Modal.Dialog></Modal.Container></Modal.Backdrop>
     {isCalendarOpen && <Modal.Backdrop className="calendar-screen-backdrop" isOpen onOpenChange={(open) => { if (!open) setIsCalendarOpen(false); }}>
       <Modal.Container className="calendar-screen-container">
