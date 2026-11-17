@@ -38,6 +38,7 @@ import { isSupabaseConfigured, supabase } from './lib/supabase';
 import { setLanguage, t, useI18n } from './lib/i18n';
 
 type View = 'board' | 'moderation';
+type ToastTone = 'success' | 'error' | 'info';
 
 function currentLocalDateForInput() {
   const today = new Date();
@@ -196,6 +197,7 @@ function AppShell({ user }: { user?: User }) {
   const [claimOpen, setClaimOpen] = useState(false);
   const [returnConfirm, setReturnConfirm] = useState<Report | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [toastTone, setToastTone] = useState<ToastTone>('success');
   const toastTimer = useRef<number | null>(null);
   const [filters, setFilters] = useState({ query: '', type: 'all' as 'all' | ReportType, category: 'all', location: 'all', status: 'all' as 'all' | ReportStatus, date: 'all' as 'all' | 'week' | 'older' });
 
@@ -242,8 +244,9 @@ function AppShell({ user }: { user?: User }) {
     setFilters((current) => ({ ...current, [key]: value }));
   };
 
-  const showToast = (message: string) => {
+  const showToast = (message: string, tone: ToastTone = 'success') => {
     setToast(message);
+    setToastTone(tone);
     if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => {
       setToast(null);
@@ -266,7 +269,7 @@ function AppShell({ user }: { user?: User }) {
       if (status === 'approved') showToast(t('Report approved'));
       if (status === 'rejected') showToast(t('Report rejected'));
     } catch {
-      showToast(t('Could not save this moderation decision. Please try again.'));
+      showToast(t('Could not save this moderation decision. Please try again.'), 'error');
     }
   };
 
@@ -277,7 +280,7 @@ function AppShell({ user }: { user?: User }) {
       setReloadKey((key) => key + 1);
       showToast(t(status === 'approved' ? 'Claim approved' : status === 'rejected' ? 'Claim rejected' : 'More information requested'));
     } catch {
-      showToast(t('Could not save this moderation decision. Please try again.'));
+      showToast(t('Could not save this moderation decision. Please try again.'), 'error');
     }
   };
 
@@ -367,10 +370,10 @@ function AppShell({ user }: { user?: User }) {
           setReturnConfirm(null);
           showToast(t('Report marked as returned.'));
         } catch {
-          showToast(t('Could not mark this report as returned. Please try again.'));
+          showToast(t('Could not mark this report as returned. Please try again.'), 'error');
         }
       }} />}
-      {toast && <div className="toast" role="status"><span className="toast-check"><Icon name="check" size={14} /></span>{toast}</div>}
+      {toast && <div className={`foundit-toast ${toastTone}`} role={toastTone === 'error' ? 'alert' : 'status'}><span className="foundit-toast-mark"><Icon name={toastTone === 'error' ? 'close' : toastTone === 'info' ? 'clock' : 'check'} size={14} /></span>{toast}</div>}
     </div>
   );
 }
@@ -543,7 +546,7 @@ function ReturnConfirmModal({ report, onClose, onConfirm }: { report: Report; on
   return <Modal.Backdrop isOpen onOpenChange={(open) => { if (!open) onClose(); }}><Modal.Container><Modal.Dialog className="modal confirm-modal"><Modal.CloseTrigger className="close-button" aria-label={t('Close return confirmation')}><Icon name="close" /></Modal.CloseTrigger><Modal.Header className="modal-header"><div><div className="eyebrow"><span className="eyebrow-line purple" />{t('Teacher action')}</div><Modal.Heading>{t('Mark this report returned?')}</Modal.Heading></div></Modal.Header><Modal.Body><p className="claim-intro">{t('This will move')} <strong>{report.title}</strong> {t('out of the active board and record it as returned. You can still review its history later.')}</p></Modal.Body><Modal.Footer className="modal-footer"><Button variant="secondary" onPress={onClose}>{t('Cancel')}</Button><Button variant="primary" onPress={() => void onConfirm()}>{t('Mark returned')} <Icon name="check" size={15} /></Button></Modal.Footer></Modal.Dialog></Modal.Container></Modal.Backdrop>;
 }
 
-function ReportComposer({ type, storageLocations, onClose, onPhotoToast, onSubmitted }: { type: ReportType; storageLocations: StorageLocation[]; onClose: () => void; onPhotoToast: (message: string) => void; onSubmitted: (input: NewReportInput) => Promise<void> }) {
+function ReportComposer({ type, storageLocations, onClose, onPhotoToast, onSubmitted }: { type: ReportType; storageLocations: StorageLocation[]; onClose: () => void; onPhotoToast: (message: string, tone?: ToastTone) => void; onSubmitted: (input: NewReportInput) => Promise<void> }) {
   const [draftType, setDraftType] = useState<ReportType>(type);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('School supplies');
@@ -598,7 +601,7 @@ function ReportComposer({ type, storageLocations, onClose, onPhotoToast, onSubmi
     const file = event.target.files?.[0];
     if (!file) return;
     if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 5 * 1024 * 1024) {
-      onPhotoToast(t('Choose a JPG or PNG image up to 5 MB.'));
+      onPhotoToast(t('Choose a JPG or PNG image up to 5 MB.'), 'error');
       event.target.value = '';
       return;
     }
@@ -606,7 +609,7 @@ function ReportComposer({ type, storageLocations, onClose, onPhotoToast, onSubmi
     event.target.value = '';
     const requestId = ++photoCompressionRequest.current;
     setCompressingPhoto(true);
-    onPhotoToast(t('Preparing photo…'));
+    onPhotoToast(t('Preparing photo…'), 'info');
     void compressImageForUpload(file)
       .then((compressedFile) => {
         if (photoCompressionRequest.current === requestId) {
@@ -618,7 +621,7 @@ function ReportComposer({ type, storageLocations, onClose, onPhotoToast, onSubmi
         if (photoCompressionRequest.current !== requestId) return;
         setPhoto(null);
         const message = compressionError instanceof Error ? compressionError.message : 'We couldn’t prepare this photo. Please try another image.';
-        onPhotoToast(t(message));
+        onPhotoToast(t(message), 'error');
       })
       .finally(() => {
         if (photoCompressionRequest.current === requestId) setCompressingPhoto(false);
