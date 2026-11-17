@@ -39,10 +39,6 @@ import { setLanguage, t, useI18n } from './lib/i18n';
 
 type View = 'board' | 'moderation';
 
-function formatFileSize(bytes: number) {
-  return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function currentLocalDateForInput() {
   const today = new Date();
   const year = today.getFullYear();
@@ -200,6 +196,7 @@ function AppShell({ user }: { user?: User }) {
   const [claimOpen, setClaimOpen] = useState(false);
   const [returnConfirm, setReturnConfirm] = useState<Report | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
   const [filters, setFilters] = useState({ query: '', type: 'all' as 'all' | ReportType, category: 'all', location: 'all', status: 'all' as 'all' | ReportStatus, date: 'all' as 'all' | 'week' | 'older' });
 
   const canModerate = !isSupabaseConfigured || ['teacher', 'moderator', 'admin'].includes(profileRole || '');
@@ -247,8 +244,16 @@ function AppShell({ user }: { user?: User }) {
 
   const showToast = (message: string) => {
     setToast(message);
-    window.setTimeout(() => setToast(null), 2600);
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimer.current = null;
+    }, 2600);
   };
+
+  useEffect(() => () => {
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+  }, []);
 
   const decideReport = async (id: string, status: Extract<ReportStatus, 'approved' | 'rejected' | 'returned' | 'archived'>) => {
     try {
@@ -333,7 +338,7 @@ function AppShell({ user }: { user?: User }) {
         {selectedReport && <ReportDetail report={selectedReport} claim={ownClaims.find((claim) => claim.report_id === selectedReport.id)} canModerate={canModerate} onBack={() => setSelectedId(null)} onClaim={() => setClaimOpen(true)} onRequestReturn={() => setReturnConfirm(selectedReport)} showToast={showToast} />}
       </main>
 
-      {composerOpen && <ReportComposer type={composerType} storageLocations={storageLocations} onClose={() => setComposerOpen(false)} onSubmitted={async (input) => {
+      {composerOpen && <ReportComposer type={composerType} storageLocations={storageLocations} onClose={() => setComposerOpen(false)} onPhotoToast={showToast} onSubmitted={async (input) => {
         const saved = isSupabaseConfigured && user ? await createReport(user, input) : createDemoReport(input, user, storageLocations);
         setReports((current) => [saved, ...current.filter((report) => report.id !== saved.id)]);
         setComposerOpen(false);
@@ -538,7 +543,7 @@ function ReturnConfirmModal({ report, onClose, onConfirm }: { report: Report; on
   return <Modal.Backdrop isOpen onOpenChange={(open) => { if (!open) onClose(); }}><Modal.Container><Modal.Dialog className="modal confirm-modal"><Modal.CloseTrigger className="close-button" aria-label={t('Close return confirmation')}><Icon name="close" /></Modal.CloseTrigger><Modal.Header className="modal-header"><div><div className="eyebrow"><span className="eyebrow-line purple" />{t('Teacher action')}</div><Modal.Heading>{t('Mark this report returned?')}</Modal.Heading></div></Modal.Header><Modal.Body><p className="claim-intro">{t('This will move')} <strong>{report.title}</strong> {t('out of the active board and record it as returned. You can still review its history later.')}</p></Modal.Body><Modal.Footer className="modal-footer"><Button variant="secondary" onPress={onClose}>{t('Cancel')}</Button><Button variant="primary" onPress={() => void onConfirm()}>{t('Mark returned')} <Icon name="check" size={15} /></Button></Modal.Footer></Modal.Dialog></Modal.Container></Modal.Backdrop>;
 }
 
-function ReportComposer({ type, storageLocations, onClose, onSubmitted }: { type: ReportType; storageLocations: StorageLocation[]; onClose: () => void; onSubmitted: (input: NewReportInput) => Promise<void> }) {
+function ReportComposer({ type, storageLocations, onClose, onPhotoToast, onSubmitted }: { type: ReportType; storageLocations: StorageLocation[]; onClose: () => void; onPhotoToast: (message: string) => void; onSubmitted: (input: NewReportInput) => Promise<void> }) {
   const [draftType, setDraftType] = useState<ReportType>(type);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('School supplies');
@@ -593,7 +598,7 @@ function ReportComposer({ type, storageLocations, onClose, onSubmitted }: { type
     const file = event.target.files?.[0];
     if (!file) return;
     if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 5 * 1024 * 1024) {
-      setError('Choose a JPG or PNG image up to 5 MB.');
+      onPhotoToast(t('Choose a JPG or PNG image up to 5 MB.'));
       event.target.value = '';
       return;
     }
@@ -601,14 +606,19 @@ function ReportComposer({ type, storageLocations, onClose, onSubmitted }: { type
     event.target.value = '';
     const requestId = ++photoCompressionRequest.current;
     setCompressingPhoto(true);
+    onPhotoToast(t('Preparing photo…'));
     void compressImageForUpload(file)
       .then((compressedFile) => {
-        if (photoCompressionRequest.current === requestId) setPhoto(compressedFile);
+        if (photoCompressionRequest.current === requestId) {
+          setPhoto(compressedFile);
+          onPhotoToast(t(compressedFile === file ? 'Photo ready to upload.' : 'Photo compressed and ready to upload.'));
+        }
       })
       .catch((compressionError: unknown) => {
         if (photoCompressionRequest.current !== requestId) return;
         setPhoto(null);
-        setError(compressionError instanceof Error ? compressionError.message : 'We couldn’t prepare this photo. Please try another image.');
+        const message = compressionError instanceof Error ? compressionError.message : 'We couldn’t prepare this photo. Please try another image.';
+        onPhotoToast(t(message));
       })
       .finally(() => {
         if (photoCompressionRequest.current === requestId) setCompressingPhoto(false);
@@ -619,9 +629,9 @@ function ReportComposer({ type, storageLocations, onClose, onSubmitted }: { type
     <div className="form-grid"><TextField isRequired fullWidth name="title" value={title} onChange={setTitle}><Label>{t('Item name')}</Label><Input placeholder={t(isFound ? 'e.g. Navy blue backpack' : 'e.g. Silver water bottle')} /></TextField><ComposerSelect label={t('Category')} value={category} options={categories.slice(1)} onChange={setCategory} /><div className="report-date-field"><Label id="report-date-label" isRequired>{t(isFound ? 'Date found' : 'Date last seen')}</Label><Button type="button" variant="secondary" className="button secondary date-picker-trigger" onPress={() => setIsCalendarOpen(true)} aria-haspopup="dialog" aria-expanded={isCalendarOpen} aria-labelledby="report-date-label report-date-value" aria-describedby={error === FUTURE_FOUND_DATE_ERROR ? 'report-date-error' : undefined}><span id="report-date-value">{date ? formatSelectedDate(date) : t('Choose date')}</span><Icon name="arrow" size={15} /></Button>{error === FUTURE_FOUND_DATE_ERROR && <div id="report-date-error" role="alert" className="form-error">{t(error)}</div>}</div><ComposerSelect label={t(isFound ? 'Location found' : 'Approximate location')} value={location} options={locations.slice(1)} onChange={setLocation} />{isFound && <><StorageLocationSelect value={storageLocationId} options={storageLocations} onChange={setStorageLocationId} />{selectedStorage && <div className="field-note">{t('Responsible')}: {t(selectedStorage.responsible_name)}</div>}</>}</div>
     <TextField isRequired fullWidth className="full-field" name="description" value={description} onChange={setDescription}><Label>{t('Description')}</Label><TextArea placeholder={t('Share details that help someone recognize it. Keep private identifiers out.')} rows={4} /><Description>{t('Keep private identifiers out of the public description.')}</Description></TextField>
     {isFound && <div className="safety-callout"><span className="safety-icon"><Icon name="lock" size={15} /></span><p><strong>{t('Keep sensitive details private.')}</strong> {t('Don’t include passwords, access codes, full payment-card numbers, or private contact details in the public description.')}</p></div>}
-    <div className={`photo-drop${photo ? ' has-selected-photo' : ''}`}>{photo && photoPreviewUrl ? <img className="photo-upload-preview" src={photoPreviewUrl} alt={t('Selected item photo preview')} /> : <span className="photo-plus">+</span>}<div className="photo-drop-copy"><strong>{photo?.name || t('Add a photo')} {!photo && <span>{t('Optional')}</span>}</strong><p>{t(compressingPhoto ? 'Compressing photo…' : photo ? 'Photo ready to upload with report' : 'JPG or PNG · up to 5 MB')}</p>{photo && !compressingPhoto && <small className="photo-size-note">{formatFileSize(photo.size)} · {t('Ready for upload')}</small>}</div>{photo && <button type="button" className="photo-remove-button" onClick={() => { photoCompressionRequest.current += 1; setCompressingPhoto(false); setPhoto(null); }}>{t('Remove photo')}</button>}<label className="file-button">{t(photo ? 'Replace photo' : 'Choose file')}<input type="file" accept="image/jpeg,image/png" onChange={choosePhoto} /></label></div>
+    <div className={`photo-drop${photo ? ' has-selected-photo' : ''}`}>{photo && photoPreviewUrl ? <img className="photo-upload-preview" src={photoPreviewUrl} alt={t('Selected item photo preview')} /> : <span className="photo-plus">+</span>}<div className="photo-drop-copy"><strong>{photo?.name || t('Add a photo')} {!photo && <span>{t('Optional')}</span>}</strong></div>{photo && <button type="button" className="photo-remove-button" onClick={() => { photoCompressionRequest.current += 1; setCompressingPhoto(false); setPhoto(null); }}>{t('Remove photo')}</button>}<label className="file-button">{t(photo ? 'Replace photo' : 'Choose file')}<input type="file" accept="image/jpeg,image/png" onChange={choosePhoto} /></label></div>
     {error && error !== FUTURE_FOUND_DATE_ERROR && <FieldError className="form-error">{t(error)}</FieldError>}
-    <Modal.Footer className="modal-footer"><span className="private-note"><Icon name="lock" size={14} /> {t('Visible to signed-in school members after review')}</span><Button className="button primary" variant="primary" type="submit" isDisabled={saving || compressingPhoto}>{t(compressingPhoto ? 'Compressing photo…' : saving ? photo ? 'Uploading photo and saving…' : 'Saving…' : isFound ? 'Send for review' : 'Publish missing report')} <Icon name="arrow" size={15} /></Button></Modal.Footer>
+    <Modal.Footer className="modal-footer"><span className="private-note"><Icon name="lock" size={14} /> {t('Visible to signed-in school members after review')}</span><Button className="button primary" variant="primary" type="submit" isDisabled={saving || compressingPhoto}>{t(saving ? photo ? 'Uploading photo and saving…' : 'Saving…' : isFound ? 'Send for review' : 'Publish missing report')} <Icon name="arrow" size={15} /></Button></Modal.Footer>
   </Form></Modal.Body></Modal.Dialog></Modal.Container></Modal.Backdrop>
     {isCalendarOpen && <Modal.Backdrop className="calendar-screen-backdrop" isOpen onOpenChange={(open) => { if (!open) setIsCalendarOpen(false); }}>
       <Modal.Container className="calendar-screen-container">
