@@ -294,3 +294,17 @@
   .date-calendar{min-width:0;}
   .calendar-screen-dialog{height:100vh;height:100dvh;min-height:0;max-height:calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));box-sizing:border-box;overflow-y:auto;overscroll-behavior:contain;}
 }
+
+
+/* Purple Stream accents adapted to FoundIt's existing light theme. */
+:root{--purple:#9146FF;--purple-ink:#6930B5;--purple-hover:#A970FF}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex='0']:focus-visible{outline:3px solid var(--purple);outline-offset:3px}
+.language-switch button:focus-visible{outline:3px solid var(--purple);outline-offset:2px}
+.button.primary:hover{background:var(--purple-hover);color:#202338;box-shadow:none}
+.search-wrap:focus-within{border-color:var(--purple);box-shadow:0 0 0 3px rgba(145,70,255,.14)}
+.language-switch button[aria-pressed="true"],.back-link span,.back-link:hover,.purple-label,.status-claimed{color:var(--purple-ink)}
+.summary-icon.claim{color:var(--purple)!important;background:var(--purple-soft)!important}
+.photo-remove-button:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
+.date-calendar [data-slot="calendar-cell"][data-focus-visible]{outline:3px solid var(--purple);outline-offset:2px}
+
+.eyebrow-line{background:var(--purple)}
