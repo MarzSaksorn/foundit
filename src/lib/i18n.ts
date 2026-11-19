@@ -20,6 +20,7 @@ const translations: Record<Language, Record<string, string>> = {
     'Only': 'เฉพาะบัญชี',
     'accounts can access FoundIt.': 'เท่านั้นที่เข้าใช้ FoundIt ได้',
     'Use a Google account ending in @phichai.ac.th.': 'โปรดใช้บัญชี Google ที่ลงท้ายด้วย @phichai.ac.th',
+    'Your session expired. Please sign in again to continue.': 'เซสชันของคุณหมดอายุแล้ว โปรดลงชื่อเข้าใช้อีกครั้งเพื่อดำเนินการต่อ',
     'Workspace': 'พื้นที่ทำงาน',
     'Board': 'บอร์ดประกาศ',
     'Moderation': 'ตรวจสอบรายงาน',

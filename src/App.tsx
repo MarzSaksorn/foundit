@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent, ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { Button, Calendar, Card, Description, FieldError, Form, Input, Label, ListBox, Modal, Select, TextArea, TextField } from '@heroui/react';
@@ -49,6 +49,23 @@ function currentLocalDateForInput() {
 }
 
 const FUTURE_FOUND_DATE_ERROR = 'Date found cannot be in the future.';
+
+function isUnauthorizedSupabaseError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const status = 'status' in error ? error.status : undefined;
+  const code = 'code' in error ? error.code : undefined;
+  const message = 'message' in error ? error.message : undefined;
+  if (status === 401 || code === 'PGRST301') return true;
+  return typeof message === 'string' && /invalid jwt|jwt.*(?:expired|invalid)|unauthorized/i.test(message);
+}
+
+function isInvalidRefreshTokenError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const code = 'code' in error ? error.code : undefined;
+  const message = 'message' in error ? error.message : undefined;
+  const details = `${typeof code === 'string' ? code : ''} ${typeof message === 'string' ? message : ''}`;
+  return /invalid[_\s-]*grant|invalid[_\s-]*refresh[_\s-]*token|refresh[_\s-]*token.{0,80}(?:not found|already used|expired|revoked|invalid)/i.test(details);
+}
 
 function formatSelectedDate(value: string) {
   const selectedDate = parseDate(value).toDate('UTC');
@@ -126,6 +143,10 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
   const [authError, setAuthError] = useState('');
+  const handleSessionExpired = useCallback(() => {
+    setAuthError(t('Your session expired. Please sign in again to continue.'));
+    setUser(null);
+  }, []);
 
   useEffect(() => {
     if (!supabase) {
@@ -139,7 +160,8 @@ function App() {
       if (!active) return;
       setUser(result.user);
       setAuthLoading(false);
-      if (!result.allowed && candidate) setAuthError(`Use a Google account ending in @${PHICHAI_DOMAIN}.`);
+      if (result.allowed) setAuthError('');
+      else if (candidate) setAuthError(`Use a Google account ending in @${PHICHAI_DOMAIN}.`);
     };
 
     void supabase.auth.getSession().then(({ data }) => syncUser(data.session?.user ?? null));
@@ -152,7 +174,7 @@ function App() {
   if (!isSupabaseConfigured) return <AppShell />;
   if (authLoading) return <AuthLoading />;
   if (!user) return <SignInScreen error={authError} />;
-  return <AppShell user={user} />;
+  return <AppShell user={user} onSessionExpired={handleSessionExpired} />;
 }
 
 function LanguageToggle({ language }: { language: 'en' | 'th' }) {
@@ -180,7 +202,7 @@ function SignInScreen({ error }: { error: string }) {
   return <main className="auth-screen"><div className="auth-card"><LanguageToggle language={language} /><div className="brand-lockup auth-brand"><div className="brand-mark">F<span>●</span></div><div><div className="brand-name">Found<span>It</span></div><div className="brand-school">{PHICHAI_SCHOOL}</div></div></div><div className="eyebrow"><span className="eyebrow-line" />{t('School community')}</div><h1>{t('Find it.')}<br /><em>{t('Bring it home.')}</em></h1><p className="auth-copy">{t('Sign in with your Phichai School Google account to browse reports, share a missing item, or send a private claim.')}</p><button className="button primary full auth-button" onClick={() => void handleSignIn()} disabled={signingIn}>{t(signingIn ? 'Opening Google…' : 'Continue with Google')}</button><p className="auth-domain">{t('Only')} <strong>@{PHICHAI_DOMAIN}</strong> {t('accounts can access FoundIt.')}</p>{signInError && <div className="form-error" role="alert">{signInError}</div>}</div></main>;
 }
 
-function AppShell({ user }: { user?: User }) {
+function AppShell({ user, onSessionExpired }: { user?: User; onSessionExpired?: () => void }) {
   const { language } = useI18n();
   const [view, setView] = useState<View>('board');
   const [reports, setReports] = useState<Report[]>(isSupabaseConfigured ? [] : initialReports);
@@ -214,11 +236,12 @@ function AppShell({ user }: { user?: User }) {
   }, []);
 
   useEffect(() => {
-    if (!isSupabaseConfigured || !user) return;
+    const client = supabase;
+    if (!isSupabaseConfigured || !client || !user) return;
     let active = true;
     setReportsLoading(true);
     setReportsError(null);
-    void (async () => {
+    const loadLiveData = async () => {
       const profile = await fetchCurrentProfile(user.id);
       const [nextReports, nextLocations, nextOwnClaims] = await Promise.all([
         fetchLiveReports(user.id),
@@ -234,11 +257,46 @@ function AppShell({ user }: { user?: User }) {
       setOwnClaims(nextOwnClaims);
       setTeacherClaims(nextTeacherClaims);
       if (!teacher) setView('board');
-    })()
+    };
+    const signInAgain = async () => {
+      if (active) onSessionExpired?.();
+      await client.auth.signOut({ scope: 'local' }).catch(() => undefined);
+    };
+    const loadWithSessionRecovery = async () => {
+      try {
+        await loadLiveData();
+        return;
+      } catch (error) {
+        if (!isUnauthorizedSupabaseError(error)) throw error;
+      }
+
+      if (!active) return;
+      const { data, error: refreshError } = await client.auth.refreshSession();
+      if (refreshError) {
+        if (isInvalidRefreshTokenError(refreshError)) {
+          await signInAgain();
+          return;
+        }
+        throw refreshError;
+      }
+      if (!data.session) {
+        await signInAgain();
+        return;
+      }
+      if (data.session.user.id !== user.id) return;
+
+      try {
+        await loadLiveData();
+      } catch (retryError) {
+        if (!isUnauthorizedSupabaseError(retryError)) throw retryError;
+        await signInAgain();
+      }
+    };
+    void loadWithSessionRecovery()
       .catch(() => { if (active) setReportsError('We couldn’t load the live board. Check your connection and try again.'); })
       .finally(() => { if (active) setReportsLoading(false); });
     return () => { active = false; };
-  }, [user?.id, reloadKey]);
+  }, [user?.id, reloadKey, onSessionExpired]);
 
   const updateFilter = (key: keyof typeof filters, value: string) => {
     setFilters((current) => ({ ...current, [key]: value }));
