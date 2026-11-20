@@ -308,3 +308,23 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .date-calendar [data-slot="calendar-cell"][data-focus-visible]{outline:3px solid var(--purple);outline-offset:2px}
 
 .eyebrow-line{background:var(--purple)}
+
+/* Private lead dialog: a compact extension of the existing light modal system. */
+.lead-modal{width:min(100%,560px);}
+.lead-modal .lead-report-title{margin:7px 0 0;color:var(--muted,#6d6965);font-size:14px;overflow-wrap:anywhere;}
+.lead-modal .lead-form{display:grid;gap:16px;min-width:0;}
+.lead-modal .lead-intro{margin:0;color:var(--ink,#222);line-height:1.55;}
+.lead-modal .private-banner{display:flex;align-items:flex-start;gap:10px;margin:0;padding:12px 14px;border:1px solid #e7d9f5;border-radius:10px;background:#faf7fd;color:#49355f;font-size:13px;line-height:1.5;}
+.lead-modal .private-banner>span:first-child{flex:none;color:var(--purple-ink,#6930B5);}
+.lead-modal .lead-field{min-width:0;}
+.lead-modal .lead-field textarea{box-sizing:border-box;width:100%;min-width:0;resize:vertical;}
+.lead-modal .optional-label{margin-left:6px;color:var(--muted,#6d6965);font-size:12px;font-weight:400;}
+.lead-modal .form-error,.lead-modal .lead-submit-error{color:#a32937;overflow-wrap:anywhere;}
+.lead-modal .lead-submit-error{margin:0;padding:10px 12px;border:1px solid #f0c8cc;border-radius:8px;background:#fff7f7;}
+.lead-modal :where(input,textarea,button):focus-visible{outline:3px solid var(--purple,#9146FF);outline-offset:2px;}
+.lead-modal .modal-footer{margin-top:0;}
+@media(max-width:360px){
+  .lead-modal .modal-footer{display:flex;flex-direction:column-reverse;}
+  .lead-modal .modal-footer .button,.lead-modal .modal-footer button{width:100%;}
+  .lead-modal .lead-form{gap:13px;}
+}
