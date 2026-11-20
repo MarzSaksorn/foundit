@@ -36,6 +36,10 @@ import {
 } from './lib/live-reports';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 import { setLanguage, t, useI18n } from './lib/i18n';
+import LeadModal from './components/LeadModal';
+import ReportLeadInbox from './components/ReportLeadInbox';
+import { createReportLead, type NewReportLeadInput, type ReportLead } from './lib/live-reports';
+import { canSubmitReportLead, canViewReportLeadInbox } from './lib/lead-access';
 
 type View = 'board' | 'moderation';
 type ToastTone = 'success' | 'error' | 'info';
@@ -212,6 +216,9 @@ function AppShell({ user, onSessionExpired }: { user?: User; onSessionExpired?: 
   const [profileRole, setProfileRole] = useState<FoundItRole | null>(null);
   const [storageLocations, setStorageLocations] = useState<StorageLocation[]>(isSupabaseConfigured ? [] : demoStorageLocations);
   const [ownClaims, setOwnClaims] = useState<OwnClaim[]>([]);
+  const [demoLeads, setDemoLeads] = useState<ReportLead[]>([]);
+  const [leadModalOpen, setLeadModalOpen] = useState(false);
+  const [leadInboxRefresh, setLeadInboxRefresh] = useState(0);
   const [teacherClaims, setTeacherClaims] = useState<TeacherClaim[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
@@ -396,7 +403,7 @@ function AppShell({ user, onSessionExpired }: { user?: User; onSessionExpired?: 
         {view === 'board' && !selectedReport && !reportsLoading && reportsError && <BoardError onRetry={() => setReloadKey((key) => key + 1)} />}
         {view === 'board' && !selectedReport && !reportsLoading && !reportsError && <BoardView reports={filteredReports} myReports={myReports} total={reports.filter((report) => ['approved', 'claimed'].includes(report.status)).length} filters={filters} updateFilter={updateFilter} onOpenReport={setSelectedId} onOpenComposer={openComposer} />}
         {view === 'moderation' && canModerate && !selectedReport && <ModerationView reports={reports} claims={teacherClaims} viewerRole={profileRole || 'teacher'} onOpenReport={setSelectedId} onDecideReport={decideReport} onDecideClaim={decideClaim} />}
-        {selectedReport && <ReportDetail report={selectedReport} claim={ownClaims.find((claim) => claim.report_id === selectedReport.id)} canModerate={canModerate} onBack={() => setSelectedId(null)} onClaim={() => setClaimOpen(true)} onRequestReturn={() => setReturnConfirm(selectedReport)} showToast={showToast} />}
+        {selectedReport && <ReportDetail key={`${selectedReport.id}-${leadInboxRefresh}`} report={selectedReport} claim={ownClaims.find((claim) => claim.report_id === selectedReport.id)} canModerate={canModerate} viewerId={user?.id} demoMode={!isSupabaseConfigured} demoLeads={demoLeads.filter((lead) => lead.report_id === selectedReport.id)} onOpenLead={() => setLeadModalOpen(true)} onBack={() => setSelectedId(null)} onClaim={() => setClaimOpen(true)} onRequestReturn={() => setReturnConfirm(selectedReport)} showToast={showToast} />}
       </main>
 
       {composerOpen && <ReportComposer type={composerType} storageLocations={storageLocations} onClose={() => setComposerOpen(false)} onPhotoToast={showToast} onSubmitted={async (input) => {
@@ -405,6 +412,20 @@ function AppShell({ user, onSessionExpired }: { user?: User; onSessionExpired?: 
         setComposerOpen(false);
         if (isSupabaseConfigured) setReloadKey((key) => key + 1);
         showToast(t(saved.type === 'missing' ? 'Missing report published to the board.' : 'Found report saved. A teacher will review it shortly.'));
+      }} />}
+      {leadModalOpen && selectedReport && <LeadModal reportTitle={selectedReport.title} onClose={() => setLeadModalOpen(false)} onSubmit={async (input: NewReportLeadInput) => {
+        if (isSupabaseConfigured) {
+          if (!user) throw new Error('Sign in is required to send a lead.');
+          await createReportLead(user.id, selectedReport.id, input);
+        } else {
+          const message = input.message.trim();
+          const location = input.sightingLocation?.trim() || null;
+          const lead: ReportLead = { id: `demo-lead-${Date.now()}-${Math.random().toString(36).slice(2)}`, report_id: selectedReport.id, submitted_by: 'demo-school-member', message, sighting_location: location, created_at: new Date().toISOString() };
+          setDemoLeads((current) => [lead, ...current]);
+        }
+        setLeadModalOpen(false);
+        setLeadInboxRefresh((key) => key + 1);
+        showToast(t('Your lead was sent privately.'));
       }} />}
       {claimOpen && selectedReport && <ClaimModal report={selectedReport} onClose={() => setClaimOpen(false)} onSubmitted={async (details) => {
         if (isSupabaseConfigured && user) {
@@ -519,8 +540,10 @@ function EmptyState({ onClear }: { onClear: () => void }) {
   return <div className="empty-state"><div className="empty-pin"><Icon name="search" size={25} /></div><h3>{t('No reports match that search.')}</h3><p>{t('Try a wider search or clear your filters to see the full board.')}</p><Button className="button secondary" variant="secondary" size="sm" onPress={onClear}>{t('Clear filters')}</Button></div>;
 }
 
-function ReportDetail({ report, claim, canModerate, onBack, onClaim, onRequestReturn, showToast }: { report: Report; claim?: OwnClaim; canModerate: boolean; onBack: () => void; onClaim: () => void; onRequestReturn: () => void; showToast: (message: string) => void }) {
+function ReportDetail({ report, claim, canModerate, viewerId, demoMode, demoLeads, onOpenLead, onBack, onClaim, onRequestReturn, showToast }: { report: Report; claim?: OwnClaim; canModerate: boolean; viewerId?: string; demoMode: boolean; demoLeads: ReportLead[]; onOpenLead: () => void; onBack: () => void; onClaim: () => void; onRequestReturn: () => void; showToast: (message: string) => void }) {
   const isFound = report.type === 'found';
+  const canSendLead = canSubmitReportLead(report, viewerId, demoMode);
+  const canViewLeads = canViewReportLeadInbox(report, viewerId, canModerate, demoMode);
   const claimPending = claim && ['pending', 'approved'].includes(claim.status);
   const canClaim = isFound && report.status === 'approved' && !claimPending;
   const claimLabel = claim?.status === 'approved' ? 'Claim approved' : claim?.status === 'rejected' ? 'Claim declined' : claim?.status === 'needs_more_information' ? 'More information requested' : 'Claim submitted';
@@ -534,9 +557,10 @@ function ReportDetail({ report, claim, canModerate, onBack, onClaim, onRequestRe
         <div className="detail-facts"><div><span>{t(isFound ? 'Found' : 'Last seen')}</span><strong>{report.dateLabel.replace('Found ', '').replace('Last seen ', '')}</strong></div><div><span>{t('Location')}</span><strong>{t(report.location)}</strong></div><div><span>{isFound ? t('Stored at') : t('Reported by')}</span><strong>{isFound ? (report.storageLocation ? t(report.storageLocation) : '') : report.createdBy}</strong></div></div>
         <div className="privacy-box"><div className="privacy-icon"><Icon name="lock" size={17} /></div><div><strong>{t('Keep identifying details private')}</strong><p>{t('Claims are only shared with the teacher reviewing this report. Don’t add passwords, codes, or full card numbers.')}</p></div></div>
         {canModerate && <ModerationHistory key={`${report.id}-${report.status}`} reportId={report.id} />}
+        {canViewLeads && <ReportLeadInbox key={`${report.id}-${demoLeads.length}`} reportId={report.id} {...(demoMode ? { demoLeads } : {})} />}
       </div>
       <aside className="detail-side">
-        <div className="side-card next-step"><div className="side-card-label">{t('Next step')}</div><h3>{t(isFound ? 'Could this be yours?' : 'Have you seen this item?')}</h3><p>{t(isFound ? 'Share one private detail only the owner would know. A teacher will review it.' : 'Let the reporter know if you found a lead or spotted this item around school.')}</p>{isFound ? <Button className="button primary full" variant="primary" isDisabled={!canClaim} onPress={canClaim ? onClaim : undefined}>{claim ? t(claimLabel) : report.status === 'claimed' ? t('Claim already approved') : t('Claim this item')} <Icon name="arrow" size={15} /></Button> : <Button className="button primary full" variant="primary" onPress={() => showToast(t('A lead form will be available soon.'))}>{t('Share a lead')} <Icon name="arrow" size={15} /></Button>}{claim && <p className="claim-status-note">{t('Claim status')}: {t(claim.status)}</p>}</div>
+        <div className="side-card next-step"><div className="side-card-label">{t('Next step')}</div><h3>{t(isFound ? 'Could this be yours?' : 'Have you seen this item?')}</h3><p>{t(isFound ? 'Share one private detail only the owner would know. A teacher will review it.' : 'Let the reporter know if you found a lead or spotted this item around school.')}</p>{isFound ? <Button className="button primary full" variant="primary" isDisabled={!canClaim} onPress={canClaim ? onClaim : undefined}>{claim ? t(claimLabel) : report.status === 'claimed' ? t('Claim already approved') : t('Claim this item')} <Icon name="arrow" size={15} /></Button> : canSendLead ? <Button className="button primary full" variant="primary" onPress={onOpenLead}>{t('Share a lead')} <Icon name="arrow" size={15} /></Button> : <p className="lead-cta-help">{t('This report is not accepting leads.')}</p>}{claim && <p className="claim-status-note">{t('Claim status')}: {t(claim.status)}</p>}</div>
         <div className="side-card report-meta"><div className="side-card-label">{t('Report details')}</div><div className="meta-row"><span>{t('Added')}</span><strong>{report.createdLabel}</strong></div><div className="meta-row"><span>{t('Reported by')}</span><strong>{report.createdBy}</strong></div>{report.responsiblePerson && <div className="meta-row"><span>{t('Responsible')}</span><strong>{t(report.responsiblePerson)}</strong></div>}<div className="meta-row"><span>{t('Report ID')}</span><strong>{report.id.replace('r-', '#')}</strong></div></div>
         {canModerate && ['approved', 'claimed'].includes(report.status) && <Button className="quiet-action" variant="ghost" size="sm" onPress={onRequestReturn}>{t('I’m a teacher · mark returned')}</Button>}
       </aside>

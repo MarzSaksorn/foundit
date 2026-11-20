@@ -328,3 +328,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .lead-modal .modal-footer .button,.lead-modal .modal-footer button{width:100%;}
   .lead-modal .lead-form{gap:13px;}
 }
+
+/* Private report lead inbox */
+.report-lead-inbox{margin-top:24px;padding:18px;border:1px solid var(--line);border-radius:12px;background:#fffefa;min-width:0}
+.report-lead-inbox-heading{display:flex;align-items:center;gap:10px;margin-bottom:12px}.report-lead-inbox-heading h2{font-size:20px}.report-lead-count{display:grid;place-items:center;min-width:23px;height:23px;padding:0 6px;border-radius:50%;background:var(--purple-soft);color:var(--purple);font-size:11px}
+.report-lead-state{margin:0;color:var(--muted);font-size:13px;line-height:1.5}.report-lead-state p{margin:0 0 10px}.report-lead-list{list-style:none;padding:0;margin:0;display:grid;gap:10px}.report-lead-item{min-width:0;padding:13px;border-radius:9px;background:#f8f7f4;border:1px solid #eeece7}.report-lead-meta{display:flex;justify-content:space-between;gap:10px;align-items:baseline;color:var(--muted);font-size:12px}.report-lead-meta strong{color:#4e5058;font-weight:600}.report-lead-meta time{text-align:right}.report-lead-message{margin:9px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55;font-size:14px;color:var(--ink)}.report-lead-location{margin:8px 0 0;color:#51545e;font-size:12px;overflow-wrap:anywhere}.report-lead-location span{font-weight:600}.lead-cta-help{font-size:13px;color:var(--muted);margin:0}
+@media(max-width:460px){.report-lead-inbox{padding:14px}.report-lead-meta{align-items:flex-start;flex-direction:column;gap:3px}.report-lead-meta time{text-align:left}}
