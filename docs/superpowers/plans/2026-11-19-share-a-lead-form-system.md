@@ -11,9 +11,9 @@
 **Spec:** Scope and decisions are captured in this plan because no separate feature brief was supplied.
 
 
-**Execution status (2026-11-20):** The local implementation and browser demo checks are complete. Playwright covered lead submission and privacy at 320, 375, 768, and 1280px, keyboard opening/dismissal, field-associated validation, Thai copy, the demo inbox, and the existing claim flow. Unit tests and the production build pass. This environment has no Supabase CLI or Docker, so the pgTAP suite has not run against a database; the migration and test SQL were grammar-parsed and their planned/assertion count was checked. The migration has not been applied to production.
+**Execution status (2026-11-20):** The local implementation and browser demo checks are complete. Playwright covered lead submission and privacy at 320, 375, 768, and 1280px, keyboard opening/dismissal, field-associated validation, Thai copy, the demo inbox, and the existing claim flow. Unit tests and the production build pass. The connected `Database` project (PostgreSQL 17.11) was initially identified as staging/test, then the user clarified it is also the Supabase backend for Vercel production. The `foundit_report_leads` migration is already applied there as migration `20261120131925`. All 28 pgTAP assertions passed in a rollback-only transaction after fixing a missing `submitted_by` value in one boundary fixture; catalog checks confirmed RLS, both policies, least-privilege grants, and zero remaining fixture rows. The authenticated browser flow against Supabase remains unverified; prior browser checks used demo mode. The GitHub production push is pending.
 
-**Execution deviation:** The timestamped migration was authored directly because the Supabase CLI is unavailable, rather than generated with `supabase migration new`. Keep local database testing and any production migration approval as release gates.
+**Execution deviation:** The timestamped migration was authored directly because the Supabase CLI is unavailable, rather than generated with `supabase migration new`. The migration and pgTAP checks ran through the authorized Supabase connection. The connected project was initially treated as staging during the test approval; the user later confirmed it is the production backend. All test fixtures rolled back, and no test rows remain.
 
 ## Global Constraints
 

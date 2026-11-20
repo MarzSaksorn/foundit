@@ -98,7 +98,7 @@ select throws_ok(
 );
 select lives_ok(
   $$insert into public.report_leads (id, report_id, submitted_by, message, sighting_location)
-    values ('20000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', 'abcdefghijkl', repeat('l', 120))$$,
+    values ('20000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'abcdefghijkl', repeat('l', 120))$$,
   'database accepts the minimum message and maximum location boundaries'
 );
 
