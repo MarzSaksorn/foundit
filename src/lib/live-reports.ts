@@ -38,6 +38,36 @@ export type ModerationEvent = {
   created_at: string;
 };
 
+export type ReportLead = {
+  id: string;
+  report_id: string;
+  submitted_by: string;
+  message: string;
+  sighting_location: string | null;
+  created_at: string;
+};
+export type NewReportLeadInput = { message: string; sightingLocation?: string };
+function parseReportLead(value: unknown): ReportLead {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('Invalid report lead returned by Supabase.');
+  if (
+    !('id' in value) || typeof value.id !== 'string' ||
+    !('report_id' in value) || typeof value.report_id !== 'string' ||
+    !('submitted_by' in value) || typeof value.submitted_by !== 'string' ||
+    !('message' in value) || typeof value.message !== 'string' ||
+    !('sighting_location' in value) || !(typeof value.sighting_location === 'string' || value.sighting_location === null) ||
+    !('created_at' in value) || typeof value.created_at !== 'string'
+  ) {
+    throw new Error('Invalid report lead returned by Supabase.');
+  }
+  return {
+    id: value.id,
+    report_id: value.report_id,
+    submitted_by: value.submitted_by,
+    message: value.message,
+    sighting_location: value.sighting_location,
+    created_at: value.created_at,
+  };
+}
 export type NewReportInput = {
   type: ReportType;
   title: string;
@@ -266,4 +296,42 @@ export async function reviewClaim(claimId: string, status: Extract<ClaimStatus, 
     p_notes: notes || null,
   });
   if (error) throw error;
+}
+
+export async function createReportLead(userId: string, reportId: string, input: NewReportLeadInput): Promise<ReportLead> {
+  const client = requireSupabase();
+  const location = input.sightingLocation?.trim() || null;
+  const { data, error } = await client
+    .from('report_leads')
+    .insert({
+      report_id: reportId,
+      submitted_by: userId,
+      message: input.message.trim(),
+      sighting_location: location,
+    })
+    .select('id, report_id, submitted_by, message, sighting_location, created_at')
+    .single();
+  if (error) throw error;
+  const row: unknown = data;
+  const lead = parseReportLead(row);
+  if (lead.report_id !== reportId || lead.submitted_by !== userId) {
+    throw new Error('Invalid report lead returned by Supabase.');
+  }
+  return lead;
+}
+export async function fetchReportLeads(reportId: string): Promise<ReportLead[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from('report_leads')
+    .select('id, report_id, submitted_by, message, sighting_location, created_at')
+    .eq('report_id', reportId)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) throw error;
+  const rows: unknown = data;
+  if (!Array.isArray(rows)) throw new Error('Invalid report leads returned by Supabase.');
+  return rows.map(parseReportLead).map((lead) => {
+    if (lead.report_id !== reportId) throw new Error('Invalid report leads returned by Supabase.');
+    return lead;
+  });
 }
