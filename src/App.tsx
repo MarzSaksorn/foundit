@@ -31,6 +31,7 @@ import {
   type ModerationEvent,
   type NewReportInput,
   type OwnClaim,
+  type FoundItProfile,
   type StorageLocation,
   type TeacherClaim,
 } from './lib/live-reports';
@@ -40,8 +41,11 @@ import LeadModal from './components/LeadModal';
 import ReportLeadInbox from './components/ReportLeadInbox';
 import { createReportLead, type NewReportLeadInput, type ReportLead } from './lib/live-reports';
 import { canSubmitReportLead, canViewReportLeadInbox } from './lib/lead-access';
+import AccountSettingsView from './components/AccountSettingsView';
+import type { AccountSettingsViewProps } from './components/AccountSettingsView';
+import { fetchOwnAccountSettings, fetchOwnNotifications, fetchOwnReports, fetchOwnClaims as fetchAccountClaims, fetchOwnAccountRequests, fetchOwnDataExport, updateOwnAccountSettings, markNotificationRead, submitDeletionRequest, type AccountSettings, type AccountRequest, type FoundItNotification, type OwnReport, type OwnClaim as AccountClaim } from './lib/account-settings';
 
-type View = 'board' | 'moderation';
+type View = 'board' | 'moderation' | 'account';
 type ToastTone = 'success' | 'error' | 'info';
 
 function currentLocalDateForInput() {
@@ -214,6 +218,14 @@ function SignInScreen({ error }: { error: string }) {
 function AppShell({ user, onSessionExpired }: { user?: User; onSessionExpired?: () => void }) {
   const { language } = useI18n();
   const [view, setView] = useState<View>('board');
+  const [accountSettings, setAccountSettings] = useState<AccountSettings | null>(null);
+  const [accountProfile, setAccountProfile] = useState<FoundItProfile | null>(null);
+  const [accountNotifications, setAccountNotifications] = useState<FoundItNotification[]>([]);
+  const [accountReports, setAccountReports] = useState<OwnReport[]>([]);
+  const [accountClaims, setAccountClaims] = useState<AccountClaim[]>([]);
+  const [accountRequests, setAccountRequests] = useState<AccountRequest[]>([]);
+  const [accountLoading, setAccountLoading] = useState(false);
+  const [accountError, setAccountError] = useState<string | null>(null);
   const [reports, setReports] = useState<Report[]>(isSupabaseConfigured ? [] : initialReports);
   const [reportsLoading, setReportsLoading] = useState(isSupabaseConfigured);
   const [reportsError, setReportsError] = useState<string | null>(null);
@@ -310,6 +322,16 @@ function AppShell({ user, onSessionExpired }: { user?: User; onSessionExpired?: 
     return () => { active = false; };
   }, [user?.id, reloadKey, onSessionExpired]);
 
+  const refreshAccount = useCallback(() => {
+    if (!user) return;
+    setAccountLoading(true); setAccountError(null);
+    void Promise.all([fetchCurrentProfile(user.id), fetchOwnAccountSettings(user.id), fetchOwnNotifications(user.id), fetchOwnReports(user.id), fetchAccountClaims(user.id), fetchOwnAccountRequests(user.id)])
+      .then(([nextProfile, nextSettings, nextNotifications, nextReports, nextClaims, nextRequests]) => { if (!nextProfile) throw new Error('Missing member profile.'); setAccountProfile(nextProfile); setProfileRole(nextProfile.role); setAccountSettings(nextSettings); setAccountNotifications(nextNotifications); setAccountReports(nextReports); setAccountClaims(nextClaims); setAccountRequests(nextRequests); })
+      .catch(() => setAccountError(t('Unable to load account settings. Please try again.')))
+      .finally(() => setAccountLoading(false));
+  }, [user?.id]);
+  useEffect(() => { if (view === 'account' && user) refreshAccount(); }, [view, user?.id, refreshAccount]);
+
   const updateFilter = (key: keyof typeof filters, value: string) => {
     setFilters((current) => ({ ...current, [key]: value }));
   };
@@ -391,7 +413,6 @@ function AppShell({ user, onSessionExpired }: { user?: User; onSessionExpired?: 
             <div className="sidebar-note-icon"><Icon name="search" size={17} /></div>
             <div><strong>{t('Small leads add up')}</strong><span>{t('Every report helps a classmate.')}</span></div>
           </div>
-          <button className="nav-item muted"><Icon name="settings" /><span>{t('School settings')}</span></button>
           <div className="account-row">
             <div className="avatar">{user ? (user.email?.slice(0, 2).toUpperCase() || 'PS') : 'MR'}</div><div className="account-copy"><strong>{user?.user_metadata?.full_name || user?.email || 'Ms. Rivera'}</strong><span>{user ? `Member · ${PHICHAI_SCHOOL}` : 'Teacher · Phichai'}</span></div><button className="more-button" aria-label="Account menu">•••</button>
           </div>
@@ -400,10 +421,11 @@ function AppShell({ user, onSessionExpired }: { user?: User; onSessionExpired?: 
 
       <main className="main-content">
         <header className="topbar">
-          <div className="breadcrumbs"><span>Phichai School</span><span className="crumb-slash">/</span><strong>{view === 'board' ? t('Community board') : t('Teacher moderation')}</strong></div>
+          <div className="breadcrumbs"><span>Phichai School</span><span className="crumb-slash">/</span><strong>{view === 'account' ? t('Account settings') : view === 'board' ? t('Community board') : t('Teacher moderation')}</strong></div>
           <div className="topbar-actions"><LanguageToggle language={language} /><span className="saved-note"><span className="online-dot" />{isSupabaseConfigured ? t('Live Supabase data') : t('Seeded demo data')}</span><button className="help-button">?</button><button className="avatar mini">{user ? (user.email?.slice(0, 2).toUpperCase() || 'PS') : 'MR'}</button></div>
         </header>
 
+        {view === 'account' && user && accountProfile && <AccountSettingsView user={user} profile={accountProfile} settings={accountSettings} notifications={accountNotifications} reports={accountReports} claims={accountClaims} requests={accountRequests} loading={accountLoading} error={accountError} onRefresh={refreshAccount} onSaveSettings={async (next: AccountSettings) => { const updated = await updateOwnAccountSettings(user.id, next); setAccountSettings(updated); setLanguage(updated.language); }} onMarkRead={async (id: string) => { await markNotificationRead(user.id, id); setAccountNotifications((items) => items.map((item) => item.id === id ? { ...item, read_at: new Date().toISOString() } : item)); }} onExport={async () => { const data = await fetchOwnDataExport(user.id); const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })); const link = document.createElement('a'); link.href = url; link.download = 'foundit-my-data.json'; link.click(); URL.revokeObjectURL(url); }} onRequestDeletion={async () => { const request = await submitDeletionRequest(user.id, accountProfile.school_id); setAccountRequests((items) => [request, ...items]); }} onSignOut={async (scope: 'local' | 'global') => { if (!supabase) return; await supabase.auth.signOut({ scope }); }} />}
         {view === 'board' && !selectedReport && reportsLoading && <BoardLoading />}
         {view === 'board' && !selectedReport && !reportsLoading && reportsError && <BoardError onRetry={() => setReloadKey((key) => key + 1)} />}
         {view === 'board' && !selectedReport && !reportsLoading && !reportsError && <BoardView reports={filteredReports} myReports={myReports} total={reports.filter((report) => ['approved', 'claimed'].includes(report.status)).length} filters={filters} updateFilter={updateFilter} onOpenReport={setSelectedId} onOpenComposer={openComposer} />}
