@@ -3,7 +3,7 @@ import { fetchOwnAccountSettings, updateOwnAccountSettings } from './account-set
 
 export type Language = 'en' | 'th';
 
-const translations: Record<Language, Record<string, string>> = {
+export const translations: Record<Language, Record<string, string>> = {
   en: {
     'Sign in with Google to browse reports, share a missing item, or send a private claim. Access is provided by your school.': 'Sign in with Google to browse reports, share a missing item, or send a private claim. Access is provided by your school.',
     'This Google account is not set up for FoundIt. Ask your school administrator for access.': 'This Google account is not set up for FoundIt. Ask your school administrator for access.',
@@ -104,6 +104,7 @@ const translations: Record<Language, Record<string, string>> = {
     'admin': 'Administrator',
     'Administrator': 'Administrator',
     'Manage members and access for Phichai School.': 'Manage members and access for Phichai School.',
+    'School settings': 'School settings',
     'Loading school settings…': 'Loading school settings…',
     'Unable to load school settings. Please try again.': 'Unable to load school settings. Please try again.',
     'School members': 'School members',

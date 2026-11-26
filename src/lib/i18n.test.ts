@@ -5,7 +5,7 @@ const settings = vi.hoisted(() => ({
   updateOwnAccountSettings: vi.fn(),
 }));
 vi.mock('./account-settings', () => settings);
-import { getLanguage, restoreLanguageForUser, saveLanguageForUser, setAuthenticatedUserId, setLanguage } from './i18n';
+import { getLanguage, restoreLanguageForUser, saveLanguageForUser, setAuthenticatedUserId, setLanguage, t, translations } from './i18n';
 
 describe('language preference persistence', () => {
   beforeEach(() => {
@@ -35,6 +35,14 @@ describe('language preference persistence', () => {
     setLanguage('en');
     expect(getLanguage()).toBe('en');
     expect(window.localStorage.getItem('foundit-language')).toBe('en');
+  });
+  it('translates School settings in English and Thai', () => {
+    expect(translations.en['School settings']).toBe('School settings');
+    expect(translations.th['School settings']).toBe('ตั้งค่าโรงเรียน');
+    setLanguage('en');
+    expect(t('School settings')).toBe('School settings');
+    setLanguage('th');
+    expect(t('School settings')).toBe('ตั้งค่าโรงเรียน');
   });
   it('saves locale changes made by a signed-in user', async () => {
     settings.fetchOwnAccountSettings.mockResolvedValue({ display_name: 'Niran', language: 'en', notify_report_updates: true, notify_claim_updates: false });

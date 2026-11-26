@@ -104,3 +104,21 @@ The production build succeeds with the existing/general Vite large-chunk advisor
 ## Fix-round commit
 
 Committed as `a2a9b42`; the fix commit includes only `src/App.tsx`, `src/components/AccountSettingsView.tsx`, `src/App.test.tsx`, and this report.
+
+
+## Bilingual dictionary coverage fix round (2026-11-26)
+
+Fixed the confirmed missing English `School settings` dictionary entry. Added a focused regression checking explicit English and Thai dictionary coverage and the runtime `t('School settings')` result in both locales. The initial runtime-only assertion passed before the fix because the English fallback is identical to the expected English label; the test was therefore tightened to check the explicit dictionary entry as well. The translation table is now exported for this direct dictionary-coverage assertion.
+
+### TDD evidence and verification
+
+- **RED:** `npm test -- src/lib/i18n.test.ts` exited 1 with `expected undefined to be 'School settings'`; one test failed and four passed. This specifically showed the missing English dictionary key (Thai key already existed).
+- **GREEN:** `npm test -- src/lib/i18n.test.ts` — exit 0; 1 test file passed, 5 tests passed.
+- **Full suite:** `npm test` — exit 0; 11 test files passed, 95 tests passed.
+- **Diff whitespace check:** `git diff --check` — exit 0.
+
+No hosted Supabase was contacted. Existing untracked `docs/research/`, `docs/superpowers/plans/`, and `docs/superpowers/specs/` paths remain untouched and excluded from the commit.
+
+### Fix-round commit
+
+Commit includes only `src/lib/i18n.ts`, `src/lib/i18n.test.ts`, and this report.
