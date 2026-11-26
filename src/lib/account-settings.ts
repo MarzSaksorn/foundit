@@ -29,6 +29,9 @@ export type OwnDataExport = {
   reports: OwnReport[]; claims: OwnClaim[]; leads: VisibleLead[]; notifications: FoundItNotification[]; account_requests: AccountRequest[];
 };
 
+const REPORT_STATUSES = ['pending', 'approved', 'claimed', 'returned', 'rejected', 'archived'] as const;
+const CLAIM_STATUSES = ['pending', 'approved', 'rejected', 'needs_more_information'] as const;
+
 type JsonObject = Record<string, unknown>;
 const isObject = (value: unknown): value is JsonObject => typeof value === 'object' && value !== null && !Array.isArray(value);
 const isString = (value: unknown): value is string => typeof value === 'string';
@@ -103,12 +106,12 @@ export function parseStorageLocation(value: unknown): StorageLocation {
 }
 export function parseOwnReport(value: unknown): OwnReport {
   const r = row(value, 'own report');
-  if ((r.report_type !== 'missing' && r.report_type !== 'found') || !isNullableString(r.last_seen_at) || !isNullableString(r.found_at) || !isNullableString(r.photo_path) || !isDateString(r.created_at)) return invalid('own report');
+  if ((r.report_type !== 'missing' && r.report_type !== 'found') || !REPORT_STATUSES.includes(r.status as typeof REPORT_STATUSES[number]) || !isNullableString(r.last_seen_at) || !isNullableString(r.found_at) || !isNullableString(r.photo_path) || !isDateString(r.created_at)) return invalid('own report');
   return { id: requiredString(r, 'id', 'own report'), report_type: r.report_type, title: requiredString(r, 'title', 'own report'), category: requiredString(r, 'category', 'own report'), description: requiredString(r, 'description', 'own report'), last_seen_at: r.last_seen_at, found_at: r.found_at, location_text: requiredString(r, 'location_text', 'own report'), photo_path: r.photo_path, status: requiredString(r, 'status', 'own report'), created_by: requiredString(r, 'created_by', 'own report'), created_at: r.created_at };
 }
 export function parseOwnClaim(value: unknown): OwnClaim {
   const r = row(value, 'own claim');
-  if (!isDateString(r.created_at)) return invalid('own claim');
+  if (!CLAIM_STATUSES.includes(r.status as typeof CLAIM_STATUSES[number]) || !isDateString(r.created_at)) return invalid('own claim');
   return { id: requiredString(r, 'id', 'own claim'), report_id: requiredString(r, 'report_id', 'own claim'), claimant_id: requiredString(r, 'claimant_id', 'own claim'), private_details: requiredString(r, 'private_details', 'own claim'), status: requiredString(r, 'status', 'own claim'), created_at: r.created_at };
 }
 export function parseVisibleLead(value: unknown): VisibleLead {
@@ -295,5 +298,7 @@ export async function updateAccountRequestStatus(schoolId: string, requestId: st
 }
 export async function fetchSchoolAccountRequests(schoolId: string): Promise<AccountRequest[]> {
   const { data, error } = await requireClient().from('user_account_requests').select(REQUEST_COLUMNS).eq('school_id', schoolId).order('created_at', { ascending: false }).limit(100);
-  return parseRows(checked({ data, error }), parseAccountRequest, 'account requests');
+  const requests = parseRows(checked({ data, error }), parseAccountRequest, 'account requests');
+  if (requests.some((request) => request.school_id !== schoolId)) return invalid('account requests');
+  return requests;
 }

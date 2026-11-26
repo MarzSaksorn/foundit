@@ -83,3 +83,64 @@ Pre-existing untracked `docs/research/`, `docs/superpowers/plans/`, and `docs/su
 - The tests mock only the Supabase client boundary; they establish query construction, mapping, parsing, and error behavior, not actual policy execution.
 - **Outstanding concern:** actual RLS, grants, triggers, and reviewed RPC execution remain unverified against a disposable Postgres/Supabase database. No hosted database operation was attempted. Task 1 report separately records its corresponding pgTAP runtime limitation.
 - No service-role key, email delivery, Google credential editing, profile photo feature, or automatic deletion behavior was introduced.
+
+
+## Fix round — 2026-11-26
+
+### Changes
+
+Addressed the two independent-review findings without expanding Task 2 scope:
+
+- `parseOwnReport` now rejects statuses outside the existing `ReportStatus` schema/type domain: `pending`, `approved`, `claimed`, `returned`, `rejected`, `archived`.
+- `parseOwnClaim` now rejects statuses outside the existing `ClaimStatus` schema/type domain: `pending`, `approved`, `rejected`, `needs_more_information`.
+- `fetchSchoolAccountRequests(schoolId)` now verifies every parsed row has the requested `school_id`, matching the other school-scoped list methods.
+
+The canonical status values were confirmed in `src/lib/reports.ts`, `src/lib/live-reports.ts`, and `supabase/migrations/2026110901_foundit_foundation.sql`; no statuses were invented. No hosted Supabase was accessed.
+
+### TDD evidence
+
+Added tests first in `src/lib/account-settings.test.ts`, then ran the targeted tests before production changes:
+
+```text
+npm test -- --run src/lib/account-settings.test.ts -t "rejects report and claim statuses outside their domain enums|rejects a school account request returned for a different school"
+```
+
+Expected RED observed: Vitest reported **2 failed, 22 skipped**. The status test failed because the invalid row did not throw (`expected [Function] to throw`); the school request test failed because the promise resolved with the `school-2` row instead of rejecting.
+
+After implementing the minimal checks, focused verification:
+
+```text
+npm test -- --run src/lib/account-settings.test.ts
+```
+
+Output: **Test Files 1 passed (1); Tests 24 passed (24)**.
+
+### Final verification
+
+Exact commands and results:
+
+```text
+npm test
+```
+
+Output: **Test Files 6 passed (6); Tests 56 passed (56); exit 0**.
+
+```text
+npx tsc --noEmit
+```
+
+Output: no diagnostics; exit 0.
+
+```text
+git diff --check
+```
+
+Output: no whitespace errors; exit 0.
+
+### Files changed in this fix round
+
+- `src/lib/account-settings.ts`
+- `src/lib/account-settings.test.ts`
+- `.superpowers/sdd/2026-11-26-account-school-settings/task-2-report.md`
+
+Pre-existing untracked docs directories/files remain untouched and are not included in the fix commit.

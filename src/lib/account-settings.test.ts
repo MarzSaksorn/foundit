@@ -18,12 +18,15 @@ import {
   fetchOwnDataExport,
   fetchOwnNotifications,
   fetchOwnReports,
+  fetchSchoolAccountRequests,
   normalizeAccountSettingsInput,
   normalizeApprovedDomain,
   parseAccountRequest,
   parseAccountSettings,
   parseApprovedDomain,
   parseFoundItNotification,
+  parseOwnClaim,
+  parseOwnReport,
   parseReviewSettings,
   parseSchoolMember,
   updateOwnAccountSettings,
@@ -82,6 +85,13 @@ describe('account settings boundary validation', () => {
     expect(() => parseReviewSettings({ school_id: 's', missing_requires_review: 'yes', found_requires_review: true })).toThrow();
   });
 
+  it('rejects report and claim statuses outside their domain enums', () => {
+    const report = { id: 'report-1', report_type: 'missing', title: 'Keys', category: 'Keys', description: 'Blue tag', last_seen_at: null, found_at: null, location_text: 'Hall', photo_path: null, status: 'deleted', created_by: 'member-1', created_at: '2026-11-20T12:00:00Z' };
+    const claim = { id: 'claim-1', report_id: 'report-1', claimant_id: 'member-1', private_details: 'scratch on back', status: 'deleted', created_at: '2026-11-20T12:00:00Z' };
+    expect(() => parseOwnReport(report)).toThrow('Invalid own report');
+    expect(() => parseOwnClaim(claim)).toThrow('Invalid own claim');
+  });
+
   it('parses notification metadata without private claim or lead message fields', () => {
     const parsed = parseFoundItNotification({ ...notificationRow, private_details: 'secret', message: 'secret' });
     expect(parsed).toEqual(notificationRow);
@@ -131,6 +141,12 @@ describe('account settings data access', () => {
     await expect(fetchSchoolMembers('school-1')).rejects.toThrow('Invalid school members');
     expect(client.eq).toHaveBeenCalledWith('school_id', 'school-1');
     expect(client.limit).toHaveBeenCalledWith(200);
+  });
+
+  it('rejects a school account request returned for a different school', async () => {
+    client.limit.mockResolvedValue({ data: [{ id: 'request-1', user_id: 'member-1', school_id: 'school-2', status: 'open', created_at: '2026-11-20T12:00:00Z', updated_at: '2026-11-20T12:00:00Z' }], error: null });
+    await expect(fetchSchoolAccountRequests('school-1')).rejects.toThrow('Invalid account requests');
+    expect(client.eq).toHaveBeenCalledWith('school_id', 'school-1');
   });
 
   it('uses the reviewed role-change RPC without a client-side role update', async () => {
