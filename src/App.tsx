@@ -215,7 +215,7 @@ function SignInScreen({ error }: { error: string }) {
   return <main className="auth-screen"><div className="auth-card"><LanguageToggle language={language} /><div className="brand-lockup auth-brand"><div className="brand-mark">F<span>●</span></div><div><div className="brand-name">Found<span>It</span></div><div className="brand-school">{PHICHAI_SCHOOL}</div></div></div><div className="eyebrow"><span className="eyebrow-line" />{t('School community')}</div><h1>{t('Find it.')}<br /><em>{t('Bring it home.')}</em></h1><p className="auth-copy">{t('Sign in with Google to browse reports, share a missing item, or send a private claim. Access is provided by your school.')}</p><button className="button primary full auth-button" onClick={() => void handleSignIn()} disabled={signingIn}>{t(signingIn ? 'Opening Google…' : 'Continue with Google')}</button>{signInError && <div className="form-error" role="alert">{signInError}</div>}</div></main>;
 }
 
-function AppShell({ user, onSessionExpired }: { user?: User; onSessionExpired?: () => void }) {
+export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExpired?: () => void }) {
   const { language } = useI18n();
   const [view, setView] = useState<View>('board');
   const [accountSettings, setAccountSettings] = useState<AccountSettings | null>(null);
@@ -400,6 +400,9 @@ function AppShell({ user, onSessionExpired }: { user?: User; onSessionExpired?: 
           {canModerate && <button className={`nav-item ${view === 'moderation' ? 'active' : ''}`} onClick={() => { setView('moderation'); setSelectedId(null); }}>
             <Icon name="inbox" /> <span>{t('Moderation')}</span><span className="nav-count accent">{pendingCount + claimCount}</span>
           </button>}
+          {user && <button type="button" className={`nav-item ${view === 'account' ? 'active' : ''}`} aria-current={view === 'account' ? 'page' : undefined} onClick={() => { setView('account'); setSelectedId(null); }}>
+            <Icon name="settings" /> <span>{t('Your account')}</span>
+          </button>}
         </nav>
 
         <div className="sidebar-section-label">{t('Shortcuts')}</div>
@@ -425,6 +428,8 @@ function AppShell({ user, onSessionExpired }: { user?: User; onSessionExpired?: 
           <div className="topbar-actions"><LanguageToggle language={language} /><span className="saved-note"><span className="online-dot" />{isSupabaseConfigured ? t('Live Supabase data') : t('Seeded demo data')}</span><button className="help-button">?</button><button className="avatar mini">{user ? (user.email?.slice(0, 2).toUpperCase() || 'PS') : 'MR'}</button></div>
         </header>
 
+        {view === 'account' && user && !accountProfile && accountLoading && <section className="board-page board-state" aria-live="polite" role="status"><div className="loading-pulse" /><h1>{t('Loading account settings…')}</h1></section>}
+        {view === 'account' && user && !accountProfile && accountError && <section className="board-page board-state"><h1>{t('Account settings')}</h1><div className="form-error" role="alert">{accountError}</div><Button className="button secondary" variant="secondary" size="sm" onPress={refreshAccount}>{t('Refresh settings')}</Button></section>}
         {view === 'account' && user && accountProfile && <AccountSettingsView user={user} profile={accountProfile} settings={accountSettings} notifications={accountNotifications} reports={accountReports} claims={accountClaims} requests={accountRequests} loading={accountLoading} error={accountError} onRefresh={refreshAccount} onSaveSettings={async (next: AccountSettings) => { const updated = await updateOwnAccountSettings(user.id, next); setAccountSettings(updated); setLanguage(updated.language); }} onMarkRead={async (id: string) => { await markNotificationRead(user.id, id); setAccountNotifications((items) => items.map((item) => item.id === id ? { ...item, read_at: new Date().toISOString() } : item)); }} onExport={async () => { const data = await fetchOwnDataExport(user.id); const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })); const link = document.createElement('a'); link.href = url; link.download = 'foundit-my-data.json'; link.click(); URL.revokeObjectURL(url); }} onRequestDeletion={async () => { const request = await submitDeletionRequest(user.id, accountProfile.school_id); setAccountRequests((items) => [request, ...items]); }} onSignOut={async (scope: 'local' | 'global') => { if (!supabase) return; await supabase.auth.signOut({ scope }); }} />}
         {view === 'board' && !selectedReport && reportsLoading && <BoardLoading />}
         {view === 'board' && !selectedReport && !reportsLoading && reportsError && <BoardError onRetry={() => setReloadKey((key) => key + 1)} />}

@@ -25,3 +25,31 @@ No hosted Supabase project was used or migrated. Existing untracked `docs/resear
 ## Review notes
 
 The view preserves the app's light/purple visual tokens and language switch, uses native labeled form controls and buttons, includes visible focus styling, status/alert announcements, responsive cards, and mobile-accessible account navigation. Global sign-out messaging does not claim immediate remote access-token revocation. Deletion remains a request workflow; it never triggers automatic account or report deletion.
+
+
+## Scoped fix round — account navigation and initial-load recovery
+
+### Changes
+
+Added a translated `Your account` native button to the shared primary navigation for signed-in members. It is keyboard-operable, marks the active account view, and uses the same navigation on narrow/mobile layouts (the app has one shared sidebar navigation, not a separate mobile navigation component). No admin-settings action is exposed. Exported `AppShell` for direct shell integration testing.
+
+Added independent account loading and error states for the case where no member profile is available yet. A failed initial load now renders an accessible `role="alert"` with the existing translated message and an enabled `Refresh settings` retry button; loading is announced via `role="status"`. Existing English and Thai translation entries for the visible strings are reused.
+
+Added `src/App.test.tsx` regression coverage for Enter-key activation of the visible account control and for initial profile-fetch failure, accessible error feedback, and successful retry.
+
+### TDD RED/GREEN
+
+- RED command: `npm test -- src/App.test.tsx` — exit 1; both tests failed because the harness attempted to render non-exported `AppShell` (test setup issue; no production behavior asserted yet).
+- After exposing `AppShell` for the tests, RED command: `npm test -- src/App.test.tsx` — exit 1; 2 tests failed because the visible `Your account` navigation button was missing.
+- After adding the navigation, RED command: `npm test -- src/App.test.tsx` — exit 1; navigation test passed, while the load-failure test failed because no `role="alert"` appeared when profile fetch rejected, confirming the blank-content defect.
+- GREEN command after the fix: `npm test -- src/App.test.tsx src/components/AccountSettingsView.test.tsx` — exit 0; 2 test files passed, 12 tests passed. The final version includes Enter-key activation and a retry assertion that re-fetches profile and mounts the account view.
+
+### Verification
+
+- `npm test -- src/App.test.tsx src/components/AccountSettingsView.test.tsx` — exit 0; **2 test files, 12 tests passed**.
+- `npm test` — exit 0; **10 test files, 76 tests passed**.
+- `npx tsc --noEmit` — exit 0; no diagnostics.
+- `npm run build` — exit 0; Vite built production assets. Existing warning remains: minified JavaScript chunk is 716.57 kB, over the 500 kB advisory threshold.
+- `git diff --check` — exit 0; no whitespace errors.
+
+No hosted Supabase was accessed. Pre-existing untracked `docs/research/`, `docs/superpowers/plans/2026-11-26-account-school-settings.md`, and `docs/superpowers/specs/` remain untouched and are not part of this fix round.

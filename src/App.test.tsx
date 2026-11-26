@@ -1,0 +1,83 @@
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { User } from '@supabase/supabase-js';
+
+const accountFetch = vi.hoisted(() => ({
+  profile: vi.fn(),
+  settings: vi.fn(),
+  notifications: vi.fn(),
+  reports: vi.fn(),
+  claims: vi.fn(),
+  requests: vi.fn(),
+}));
+
+vi.mock('./lib/account-settings', () => ({
+  fetchOwnAccountSettings: accountFetch.settings,
+  fetchOwnNotifications: accountFetch.notifications,
+  fetchOwnReports: accountFetch.reports,
+  fetchOwnClaims: accountFetch.claims,
+  fetchOwnAccountRequests: accountFetch.requests,
+  fetchOwnDataExport: vi.fn(),
+  updateOwnAccountSettings: vi.fn(),
+  markNotificationRead: vi.fn(),
+  submitDeletionRequest: vi.fn(),
+}));
+vi.mock('./lib/live-reports', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./lib/live-reports')>();
+  return { ...actual, fetchCurrentProfile: accountFetch.profile };
+});
+
+import { AppShell } from './App';
+
+const member = { id: 'member-1', email: 'niran@example.org', user_metadata: { full_name: 'Niran' } } as unknown as User;
+const profile = { id: member.id, school_id: 'phichai-school', role: 'student' as const };
+
+function configureSuccessfulLoad() {
+  accountFetch.profile.mockResolvedValue(profile);
+  accountFetch.settings.mockResolvedValue({ display_name: 'Niran', language: 'en', notify_report_updates: true, notify_claim_updates: true });
+  accountFetch.notifications.mockResolvedValue([]);
+  accountFetch.reports.mockResolvedValue([]);
+  accountFetch.claims.mockResolvedValue([]);
+  accountFetch.requests.mockResolvedValue([]);
+}
+
+describe('member account navigation and initial load', () => {
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  it('opens Account Settings from a visible keyboard-operable navigation control', async () => {
+    configureSuccessfulLoad();
+    render(<AppShell user={member} />);
+
+    const accountNavigation = screen.getByRole('button', { name: /your account/i });
+    accountNavigation.focus();
+    expect(accountNavigation).toHaveFocus();
+    await userEvent.setup().keyboard('{Enter}');
+
+    expect(await screen.findByRole('heading', { name: 'Account settings' })).toBeInTheDocument();
+    expect(screen.getByText('Google account')).toBeInTheDocument();
+    expect(screen.queryByText(/admin settings/i)).not.toBeInTheDocument();
+  });
+
+  it('shows an accessible error and retry action when the initial profile fetch fails', async () => {
+    accountFetch.profile.mockRejectedValue(new Error('network unavailable'));
+    accountFetch.settings.mockResolvedValue({ display_name: 'Niran', language: 'en', notify_report_updates: true, notify_claim_updates: true });
+    accountFetch.notifications.mockResolvedValue([]);
+    accountFetch.reports.mockResolvedValue([]);
+    accountFetch.claims.mockResolvedValue([]);
+    accountFetch.requests.mockResolvedValue([]);
+    render(<AppShell user={member} />);
+    fireEvent.click(screen.getByRole('button', { name: /your account/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to load account settings. Please try again.');
+    const retry = screen.getByRole('button', { name: /refresh settings|try again/i });
+    expect(retry).toBeVisible();
+    accountFetch.profile.mockResolvedValue(profile);
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Account settings' })).toBeInTheDocument());
+    expect(accountFetch.profile).toHaveBeenCalledTimes(2);
+  });
+});
