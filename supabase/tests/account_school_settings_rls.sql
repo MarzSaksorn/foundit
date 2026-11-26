@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap;
-select plan(75);
+select plan(77);
 
 -- Deterministic identities and rows; all fixtures roll back with this test.
 insert into public.schools (name, allowed_email_domain)
@@ -102,6 +102,8 @@ select throws_ok($$select public.change_school_member_role((select id from publi
 select throws_ok($$select public.change_school_member_role((select id from public.profiles where email='outside@example.com'),'teacher'::public.user_role)$$, '42501', null, 'admin cannot change another school profile');
 select lives_ok($$insert into public.school_allowed_domains(school_id,domain) select school_id,'extra.phichai.ac.th' from public.profiles where id=auth.uid()$$, 'admin adds normalized approved domain');
 select throws_ok($$insert into public.school_allowed_domains(school_id,domain) select school_id,'INVALID DOMAIN' from public.profiles where id=auth.uid()$$, '23514', null, 'invalid domain normalization rejected');
+select throws_ok($$insert into public.school_allowed_domains(school_id,domain) select school_id,repeat('a',64)||'.example' from public.profiles where id=auth.uid()$$, '23514', null, 'DNS labels longer than 63 characters are rejected');
+select throws_ok($$insert into public.school_allowed_domains(school_id,domain) select school_id,repeat('a',63)||'.'||repeat('b',63)||'.'||repeat('c',63)||'.'||repeat('d',62) from public.profiles where id=auth.uid()$$, '23514', null, 'domains longer than 253 characters are rejected');
 select lives_ok($$update public.school_review_settings set found_requires_review=false where school_id=(select school_id from public.profiles where id=auth.uid())$$, 'admin updates review settings');
 select lives_ok($$update public.storage_locations set responsible_name='Admin' where id=(select min(id) from public.storage_locations where school_id=(select school_id from public.profiles where id=auth.uid()))$$, 'admin manages school storage locations');
 select lives_ok($$update public.user_account_requests set status='received' where user_id='00000000-0000-4000-8000-000000000102'$$, 'admin reviews member account request');

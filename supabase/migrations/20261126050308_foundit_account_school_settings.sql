@@ -9,6 +9,8 @@ create table public.school_allowed_domains (
   created_at timestamptz not null default now(),
   constraint school_allowed_domains_normalized check (
     domain = lower(domain) and domain !~ '[@[:space:]]' and
+    char_length(domain) <= 253 and
+    domain !~ '(^|[.])[a-z0-9-]{64,}([.]|$)' and
     domain ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?([.][a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
   ),
   unique (school_id, domain)

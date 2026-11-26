@@ -103,7 +103,7 @@ The production build succeeds with the existing/general Vite large-chunk advisor
 
 ## Fix-round commit
 
-Committed as `a2a9b42`; the fix commit includes only `src/App.tsx`, `src/components/AccountSettingsView.tsx`, `src/App.test.tsx`, and this report.
+Committed as `19bfe0f`; the fix commit includes only `src/App.tsx`, `src/components/AccountSettingsView.tsx`, `src/App.test.tsx`, and this report.
 
 
 ## Bilingual dictionary coverage fix round (2026-11-26)
@@ -122,3 +122,48 @@ No hosted Supabase was contacted. Existing untracked `docs/research/`, `docs/sup
 ### Fix-round commit
 
 Commit includes only `src/lib/i18n.ts`, `src/lib/i18n.test.ts`, and this report.
+
+
+## Final-review fix round (2026-11-26)
+
+Added database-side DNS maximum-length checks to `school_allowed_domains_normalized`: domains must be at most 253 characters and no label may exceed 63 characters. This matches the existing client validator in `src/lib/account-settings.ts` (total length and per-label limits). Added pgTAP rejection coverage for a 64-character label and a 254-character domain composed of valid-length labels, and increased the test plan from 75 to 77. Corrected the notification-focus fix attribution above: the reviewed fix commit is `19bfe0f`.
+
+### TDD and validation evidence
+
+- Wrote the two pgTAP rejection assertions first; attempted available runtime validation and confirmed no `psql`, `pg_prove`, `docker`, or `supabase` executable is present. No database was contacted.
+- Before changing the migration, ran `python3` with `pglast.parse_sql` against `supabase/tests/account_school_settings_rls.sql`: **PASS**, 122 SQL statements parsed. Static assertion checks confirmed plan count 77, the 64-character label fixture, and the 254-character full-domain fixture. PostgreSQL/pgTAP runtime assertions could not be run in this sandbox.
+- After implementation, `python3` with `pglast.parse_sql` parsed both SQL files: `PASS pglast parse_sql migration: 80 statements`; `PASS pglast parse_sql pgTAP test: 122 statements`. Static consistency assertions passed: `PASS static consistency: CHECK enforces total <=253 and label <=63; plan=77; both DNS-limit throws_ok assertions present; fixtures 64-label and 254-total`.
+- `git diff --check` — **PASS**, clean. Database runtime remains explicitly **unverified**; no hosted Supabase migration, deployment, or remote operation was performed.
+
+Exact final static-check command and output:
+
+```sh
+$ python3 - <<'PY'
+from pathlib import Path
+from pglast import parse_sql
+migration=Path('supabase/migrations/20261126050308_foundit_account_school_settings.sql').read_text()
+test=Path('supabase/tests/account_school_settings_rls.sql').read_text()
+for name, sql in [('migration', migration), ('pgTAP test', test)]:
+ print(f'PASS pglast parse_sql {name}: {len(parse_sql(sql))} statements')
+assert 'char_length(domain) <= 253' in migration
+assert "domain !~ '(^|[.])[a-z0-9-]{64,}([.]|$)'" in migration
+assert 'select plan(77);' in test
+assert test.count('select throws_ok(') >= 2 and 'DNS labels longer than 63 characters are rejected' in test and 'domains longer than 253 characters are rejected' in test
+label_fixture='a'*64+'.example'
+total_fixture='.'.join(['a'*63,'b'*63,'c'*63,'d'*62])
+assert len(label_fixture.split('.')[0]) == 64 and len(total_fixture) == 254 and max(map(len,total_fixture.split('.'))) == 63
+import re
+label_overlong=re.compile(r'(^|[.])[a-z0-9-]{64,}([.]|$)')
+assert label_overlong.search(label_fixture) and len(total_fixture) > 253 and not label_overlong.search(total_fixture)
+print('PASS static consistency: CHECK enforces total <=253 and label <=63; plan=77; both DNS-limit throws_ok assertions present; fixtures 64-label and 254-total')
+PY
+$ git diff --check && echo 'PASS git diff --check'
+PASS pglast parse_sql migration: 80 statements
+PASS pglast parse_sql pgTAP test: 122 statements
+PASS static consistency: CHECK enforces total <=253 and label <=63; plan=77; both DNS-limit throws_ok assertions present; fixtures 64-label and 254-total
+PASS git diff --check
+```
+
+### Changed files and commit
+
+Final-review fix commit changes only `supabase/migrations/20261126050308_foundit_account_school_settings.sql`, `supabase/tests/account_school_settings_rls.sql`, and this report. Existing untracked `docs/research/`, `docs/superpowers/plans/`, and `docs/superpowers/specs/` remain untouched and excluded.
