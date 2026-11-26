@@ -55,3 +55,20 @@ failed to inspect container health: docker: command not found (podman also not f
 - RLS has not been runtime-verified. In particular, the interaction between migration-created grants/policies and the full existing Supabase schema should be tested on a disposable local database before deployment.
 - The current pgTAP file primarily asserts existence and catalog-level contracts. It does not yet contain comprehensive authenticated-role behavioral fixtures; those must be added/run as part of the isolated database verification before treating this authorization contract as fully tested.
 - No hosted deployment or migration was attempted.
+
+
+## Corrective pass (2026-11-26)
+
+This focused pass addresses the review's scope and security findings without changing application files or prior migrations. Updated only the existing additive migration and its pgTAP test file.
+
+- Expanded `account_school_settings_rls.sql` from catalog-only checks to 61 assertions with deterministic `auth.users` identities and authenticated-role JWT fixtures (`set local role authenticated`, `request.jwt.claim.sub`, and `request.jwt.claims`), following `report_leads_rls.sql`. Behavioral cases cover allow-list lookup while RLS is enabled, approved-domain visibility and normalization rejection, own-vs-other settings and notifications/requests, non-member exclusion, member role escalation denial, member write denials, admin profile/domain/location/review/request access, same-school role changes, cross-school denial, self-demotion denial, and last-domain deletion protection. Existing last-admin guard presence remains asserted; runtime guard behavior could not be executed here.
+- Replaced recursive allow-list access with `private.email_is_approved_phichai_domain(text)`, a narrowly executable `SECURITY DEFINER` lookup with `search_path = ''`; `public.is_phichai_email()` is an invoker wrapper. The helper's private-schema execute is granted to authenticated for the wrapper's caller context; public/anon execution is revoked. This avoids the school-domain SELECT policy re-entering the same RLS-protected table.
+- Reduced direct `authenticated` profile UPDATE to `display_name` only. Added `public.change_school_member_role(uuid, public.user_role) returns void`, a `SECURITY DEFINER` RPC pinned to empty `search_path` with schema-qualified references, revoked from PUBLIC/anon and granted only to authenticated. It requires `auth.uid()`, an allow-listed Phichai-school admin profile, a target profile in the same school, and rejects self-role changes. Updates pass through the existing last-admin trigger. Task 2 should call `supabase.rpc('change_school_member_role', { p_target_user_id, p_new_role })`; authorization is enforced server-side, not via client metadata.
+
+### Corrective-pass TDD and verification evidence
+
+- RED/GREEN ordering: wrote and saved the expanded pgTAP assertions before editing the migration SQL. A live RED or GREEN database result was **not observable** because no PostgreSQL/Supabase test database, `psql`, `pg_prove`, Docker, or Supabase CLI is available in this sandbox. No database execution is claimed; the assertion intended to expose allow-list recursion and direct role escalation exists in the test file, but its runtime result remains unverified.
+- `python3` / `pglast.parse_sql`: migration **PASS (79 top-level statements parsed)**; final pgTAP file **PASS (87 top-level statements parsed)**. Parsing checks top-level PostgreSQL grammar only, not execution or PL/pgSQL behavior.
+- Test-plan consistency: `grep -Ec '^select (has_table|ok|is|lives_ok|throws_ok)\\(' supabase/tests/account_school_settings_rls.sql` returned **61**; the file declares `select plan(61)`.
+- `git diff --check`: passed with no output.
+- No hosted project was linked or contacted, no migration was applied, and no database operation was attempted. RLS behavior and full pgTAP results remain the principal verification gap.

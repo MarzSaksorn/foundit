@@ -62,12 +62,20 @@ grant update (status, updated_at) on public.user_account_requests to authenticat
 grant select on public.school_review_settings to authenticated;
 grant update (missing_requires_review, found_requires_review, updated_at) on public.school_review_settings to authenticated;
 
+create or replace function private.email_is_approved_phichai_domain(p_email text)
+returns boolean language sql stable security definer set search_path = '' as $function$
+ select exists(select 1 from public.school_allowed_domains d join public.schools s on s.id=d.school_id
+ where s.allowed_email_domain='phichai.ac.th' and lower(split_part(coalesce(p_email,''),'@',2))=d.domain
+ and lower(coalesce(p_email,'')) ~ '^[^@]+@[^@]+$');
+$function$;
+revoke all on function private.email_is_approved_phichai_domain(text) from public, anon;
+grant execute on function private.email_is_approved_phichai_domain(text) to authenticated;
 create or replace function public.is_phichai_email()
 returns boolean language sql stable set search_path = '' as $function$
- select exists(select 1 from public.school_allowed_domains d join public.schools s on s.id=d.school_id
- where s.allowed_email_domain='phichai.ac.th' and lower(split_part(coalesce(auth.jwt()->>'email',''),'@',2))=d.domain
- and lower(coalesce(auth.jwt()->>'email','')) ~ '^[^@]+@[^@]+$');
+ select private.email_is_approved_phichai_domain(auth.jwt()->>'email');
 $function$;
+revoke all on function public.is_phichai_email() from public, anon;
+grant execute on function public.is_phichai_email() to authenticated;
 create or replace function private.is_school_admin(p_school_id uuid)
 returns boolean language sql stable security definer set search_path = '' as $function$
  select p_school_id=(select s.id from public.schools s where s.allowed_email_domain='phichai.ac.th')
@@ -79,7 +87,24 @@ grant usage on schema private to authenticated;
 grant execute on function private.is_school_admin(uuid) to authenticated;
 
 grant select on public.profiles, public.storage_locations to authenticated;
-grant update (role, display_name) on public.profiles to authenticated;
+grant update (display_name) on public.profiles to authenticated;
+create or replace function public.change_school_member_role(p_target_user_id uuid, p_new_role public.user_role)
+returns void language plpgsql security definer set search_path = '' as $function$
+declare v_school_id uuid; v_target_school_id uuid; begin
+ if (select auth.uid()) is null then raise exception 'Authentication required' using errcode='42501'; end if;
+ select p.school_id into v_school_id from public.profiles p
+ where p.id=(select auth.uid()) and p.role='admin'::public.user_role
+ and p.school_id=(select s.id from public.schools s where s.allowed_email_domain='phichai.ac.th')
+ and public.is_phichai_email();
+ if v_school_id is null then raise exception 'School administrator required' using errcode='42501'; end if;
+ if p_target_user_id=(select auth.uid()) then raise exception 'Administrators cannot change their own role' using errcode='42501'; end if;
+ select p.school_id into v_target_school_id from public.profiles p where p.id=p_target_user_id;
+ if v_target_school_id is distinct from v_school_id then raise exception 'Target must belong to the Phichai school' using errcode='42501'; end if;
+ update public.profiles set role=p_new_role where id=p_target_user_id and school_id=v_school_id;
+ if not found then raise exception 'Target profile not found' using errcode='42501'; end if;
+end $function$;
+revoke all on function public.change_school_member_role(uuid, public.user_role) from public, anon;
+grant execute on function public.change_school_member_role(uuid, public.user_role) to authenticated;
 create policy "members update own display name" on public.profiles for update to authenticated using (id=(select auth.uid()) and public.is_phichai_email()) with check (id=(select auth.uid()) and public.is_phichai_email());
 grant insert, update, delete on public.storage_locations to authenticated;
 create policy "school admins read profiles" on public.profiles for select to authenticated using (private.is_school_admin(school_id));
