@@ -28,4 +28,4 @@ New administrator copy, including labels, help, loading/empty/error/success mess
 
 ## Commit
 
-Created commit `537031c` (`feat: add administrator school settings`), including this report. The pre-existing untracked `docs/research/`, `docs/superpowers/plans/`, and `docs/superpowers/specs/` content was left untouched and excluded from the commit.
+Created commit `ac5568a` (`feat: add administrator school settings`), including this report. The pre-existing untracked `docs/research/`, `docs/superpowers/plans/`, and `docs/superpowers/specs/` content was left untouched and excluded from the commit.

@@ -162,6 +162,8 @@ const translations: Record<Language, Record<string, string>> = {
     'Save request status': 'Save request status',
     'Request status saved.': 'Request status saved.',
     'Could not update this request. Please try again.': 'Could not update this request. Please try again.',
+    'Account menu': 'Account menu',
+    'Help': 'Help',
   },
   th: {
     'Sign in with Google to browse reports, share a missing item, or send a private claim. Access is provided by your school.': 'ลงชื่อเข้าใช้ด้วย Google เพื่อดูรายงาน แจ้งของหาย หรือส่งคำขอเคลมส่วนตัว โรงเรียนเป็นผู้กำหนดสิทธิ์การเข้าใช้งาน',
@@ -557,6 +559,8 @@ const translations: Record<Language, Record<string, string>> = {
     'Save request status': 'บันทึกสถานะคำขอ',
     'Request status saved.': 'บันทึกสถานะคำขอแล้ว',
     'Could not update this request. Please try again.': 'อัปเดตคำขอไม่สำเร็จ โปรดลองอีกครั้ง',
+    'Account menu': 'เมนูบัญชี',
+    'Help': 'ความช่วยเหลือ',
   },
 };
 

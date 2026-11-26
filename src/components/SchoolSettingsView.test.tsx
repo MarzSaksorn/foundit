@@ -117,6 +117,27 @@ describe('SchoolSettingsView', () => {
     await waitFor(() => expect(service.removeApprovedDomain).toHaveBeenCalledWith('phichai-1', 'domain-1'));
   });
 
+  it('focuses destructive confirmation and dismisses it with Escape, returning focus', async () => {
+    setup();
+    vi.mocked(service.fetchApprovedDomains).mockResolvedValue([domain, { ...domain, id: 'domain-2', domain: 'example.org' }]);
+    cleanup();
+    render(<SchoolSettingsView profile={adminProfile} />);
+    await screen.findByText('phichai.ac.th');
+    const opener = screen.getByRole('button', { name: /remove phichai.ac.th/i });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = screen.getByRole('alertdialog');
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+    const cancel = within(dialog).getByRole('button', { name: /cancel/i });
+    const confirm = within(dialog).getByRole('button', { name: /confirm remove domain/i });
+    confirm.focus();
+    fireEvent.keyDown(confirm, { key: 'Tab' });
+    expect(cancel).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(opener).toHaveFocus();
+  });
+
   it('does not claim a storage location was deleted when the server rejects a referenced location', async () => {
     setup();
     vi.mocked(service.removeStorageLocation).mockRejectedValue(new Error('foreign key violation'));

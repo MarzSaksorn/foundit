@@ -423,7 +423,7 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
             <div><strong>{t('Small leads add up')}</strong><span>{t('Every report helps a classmate.')}</span></div>
           </div>
           <div className="account-row">
-            <div className="avatar">{user ? (user.email?.slice(0, 2).toUpperCase() || 'PS') : 'MR'}</div><div className="account-copy"><strong>{user?.user_metadata?.full_name || user?.email || 'Ms. Rivera'}</strong><span>{user ? `Member · ${PHICHAI_SCHOOL}` : 'Teacher · Phichai'}</span></div><button className="more-button" aria-label="Account menu">•••</button>
+            <div className="avatar">{user ? (user.email?.slice(0, 2).toUpperCase() || 'PS') : 'MR'}</div><div className="account-copy"><strong>{accountSettings?.display_name || user?.email || 'Ms. Rivera'}</strong><span>{user ? t('Member · Phichai School') : t('Teacher · Phichai')}</span></div><button type="button" className="more-button" aria-label={t('Account menu')} onClick={() => { setView('account'); setSelectedId(null); }}>•••</button>
           </div>
         </div>
       </aside>
@@ -431,7 +431,7 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
       <main className="main-content">
         <header className="topbar">
           <div className="breadcrumbs"><span>Phichai School</span><span className="crumb-slash">/</span><strong>{view === 'account' ? t('Account settings') : view === 'school-settings' ? t('School settings') : view === 'board' ? t('Community board') : t('Teacher moderation')}</strong></div>
-          <div className="topbar-actions"><LanguageToggle language={language} /><span className="saved-note"><span className="online-dot" />{isSupabaseConfigured ? t('Live Supabase data') : t('Seeded demo data')}</span><button className="help-button">?</button><button className="avatar mini">{user ? (user.email?.slice(0, 2).toUpperCase() || 'PS') : 'MR'}</button></div>
+          <div className="topbar-actions"><LanguageToggle language={language} />{user && <button type="button" className="help-button notification-entry" aria-label={t('Notifications')} title={t('Notifications')} onClick={() => { setView('account'); setSelectedId(null); document.getElementById('notifications-heading')?.scrollIntoView({ block: 'start' }); }}>{accountNotifications.some((item) => !item.read_at) ? '•' : '○'}</button>}<span className="saved-note"><span className="online-dot" />{isSupabaseConfigured ? t('Live Supabase data') : t('Seeded demo data')}</span><button className="help-button" aria-label={t('Help')}>?</button><span className="avatar mini" aria-hidden="true">{user ? (user.email?.slice(0, 2).toUpperCase() || 'PS') : 'MR'}</span></div>
         </header>
 
         {view === 'account' && user && !accountProfile && accountLoading && <section className="board-page board-state" aria-live="polite" role="status"><div className="loading-pulse" /><h1>{t('Loading account settings…')}</h1></section>}

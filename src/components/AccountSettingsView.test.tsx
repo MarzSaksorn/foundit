@@ -71,6 +71,30 @@ describe('AccountSettingsView', () => {
     fireEvent.click(screen.getByRole('button', { name: /confirm sign out/i }));
     return waitFor(() => expect(props.onSignOut).toHaveBeenCalledWith('global'));
   });
+  it('moves focus into the confirmation dialog and returns focus after Escape', () => {
+    setup();
+    const opener = screen.getByRole('button', { name: /sign out on this device/i });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(opener).toHaveFocus();
+  });
+  it('keeps dialog Tab navigation contained', () => {
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: /sign out on this device/i }));
+    const dialog = screen.getByRole('dialog');
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    const confirm = screen.getByRole('button', { name: 'Confirm sign out' });
+    confirm.focus();
+    fireEvent.keyDown(confirm, { key: 'Tab' });
+    expect(cancel).toHaveFocus();
+    cancel.focus();
+    fireEvent.keyDown(cancel, { key: 'Tab', shiftKey: true });
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+  });
   it('explains data privacy and delayed token expiry accurately', () => {
     setup();
     expect(screen.getByText(/only you and authorized school staff/i)).toBeInTheDocument();

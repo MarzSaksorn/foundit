@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { User } from '@supabase/supabase-js';
@@ -29,6 +29,7 @@ vi.mock('./lib/live-reports', async (importOriginal) => {
 });
 
 import { AppShell } from './App';
+import { setLanguage } from './lib/i18n';
 
 const member = { id: 'member-1', email: 'niran@example.org', user_metadata: { full_name: 'Niran' } } as unknown as User;
 const profile = { id: member.id, school_id: 'phichai-school', role: 'student' as const };
@@ -45,6 +46,7 @@ function configureSuccessfulLoad() {
 describe('member account navigation and initial load', () => {
   afterEach(() => {
     cleanup();
+    setLanguage('en');
     vi.clearAllMocks();
   });
 
@@ -52,7 +54,7 @@ describe('member account navigation and initial load', () => {
     configureSuccessfulLoad();
     render(<AppShell user={member} />);
 
-    const accountNavigation = screen.getByRole('button', { name: /your account/i });
+    const accountNavigation = within(screen.getByRole('navigation')).getByRole('button', { name: /your account/i });
     accountNavigation.focus();
     expect(accountNavigation).toHaveFocus();
     await userEvent.setup().keyboard('{Enter}');
@@ -79,5 +81,36 @@ describe('member account navigation and initial load', () => {
     fireEvent.click(retry);
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Account settings' })).toBeInTheDocument());
     expect(accountFetch.profile).toHaveBeenCalledTimes(2);
+  });
+
+  it('opens account settings from the account menu and can return to the board', async () => {
+    configureSuccessfulLoad();
+    render(<AppShell user={member} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /account menu/i }));
+    expect(await screen.findByRole('heading', { name: 'Account settings' })).toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole('navigation')).getByRole('button', { name: /board/i }));
+    expect(screen.getByRole('heading', { name: /look for it/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /report missing/i })).toBeVisible();
+  });
+
+  it('keeps school settings unavailable to a non-admin and retains the member board', async () => {
+    configureSuccessfulLoad();
+    render(<AppShell user={member} />);
+    expect(screen.queryByRole('button', { name: /school settings/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /look for it/i })).toBeInTheDocument();
+
+    expect(screen.queryByRole('heading', { name: 'School settings' })).not.toBeInTheDocument();
+  });
+
+  it('switches language in both directions and exposes a notification entry point', async () => {
+    configureSuccessfulLoad();
+    render(<AppShell user={member} />);
+    await userEvent.click(screen.getByRole('button', { name: /ไทย/i }));
+    expect(document.documentElement).toHaveAttribute('lang', 'th');
+    expect(screen.getByRole('button', { name: /การแจ้งเตือน/i })).toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole('button', { name: 'EN' })[0]);
+    expect(document.documentElement).toHaveAttribute('lang', 'en');
+    expect(screen.getByRole('button', { name: /notifications/i })).toBeInTheDocument();
   });
 });
