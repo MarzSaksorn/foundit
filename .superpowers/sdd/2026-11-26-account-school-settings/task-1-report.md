@@ -72,3 +72,28 @@ This focused pass addresses the review's scope and security findings without cha
 - Test-plan consistency: `grep -Ec '^select (has_table|ok|is|lives_ok|throws_ok)\\(' supabase/tests/account_school_settings_rls.sql` returned **61**; the file declares `select plan(61)`.
 - `git diff --check`: passed with no output.
 - No hosted project was linked or contacted, no migration was applied, and no database operation was attempted. RLS behavior and full pgTAP results remain the principal verification gap.
+
+## Fix round 1 (2026-11-26)
+
+### Changes
+
+- Added deterministic report, claim, and lead fixtures to `supabase/tests/account_school_settings_rls.sql`. Trigger effects are checked for expected recipient, event type, report ID, and preference-enabled-only behavior; authenticated owners/claimants can read their own event notifications and cannot read another recipient's notifications.
+- Added catalog and row-data assertions that notification rows do not expose/store lead message, claim private details, or sighting-location fields.
+- Added behavioral `throws_ok`/`lives_ok` cases for failed demotion of the sole remaining admin and successful demotion when a second active admin exists. The updated pgTAP plan is 75 assertions.
+- In the migration, explicitly revoked privileges from `PUBLIC`, `anon`, and `authenticated` on `profiles` and `storage_locations` before re-granting authenticated SELECT, profile `UPDATE(display_name)`, and the existing school-admin location operations. Owner and `service_role` grants are untouched. Existing profile UPDATE assertions continue to ensure no table-wide UPDATE and no `role`-column UPDATE for authenticated.
+
+### TDD and database test limitation
+
+The pgTAP behavioral tests were written before the migration privilege correction. The required database RED/GREEN cycle was unavailable: `command -v supabase`, `command -v docker`, `command -v psql`, and `command -v pg_prove` returned no paths. No disposable database was available, no credentials were used, and no database RED/GREEN result or passing pgTAP run is claimed. No hosted Supabase was contacted.
+
+### Exact verification
+
+- `python3 - <<'PY' ... from pglast import parse_sql ... PY` parsing both `supabase/migrations/20261126050308_foundit_account_school_settings.sql` and `supabase/tests/account_school_settings_rls.sql`: output `OK` for each file; exit 0.
+- Static plan script counting `has_table|ok|is|lives_ok|throws_ok` assertions: `pgTAP assertion count=75; plan=75; match=True`.
+- `git diff --check`: exit 0, no output.
+- Database execution: not run; behavioral pgTAP test outcomes are unverified.
+
+### Concerns
+
+- Trigger recipients, preference filtering, authenticated notification RLS, last-admin behavior, and all remaining policy behavior still require pgTAP execution on an isolated disposable Supabase/Postgres instance. Static parsing does not execute PL/pgSQL or prove runtime catalog grants.
+- The existing last-admin guard serializes through the school row lock; concurrent behavior is not experimentally tested in this pass.

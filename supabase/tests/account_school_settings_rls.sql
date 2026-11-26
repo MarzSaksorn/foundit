@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap;
-select plan(61);
+select plan(75);
 
 -- Deterministic identities and rows; all fixtures roll back with this test.
 insert into public.schools (name, allowed_email_domain)
@@ -108,6 +108,52 @@ select lives_ok($$update public.user_account_requests set status='received' wher
 select throws_ok($$delete from public.school_allowed_domains where domain in ('phichai.ac.th','secondary.phichai.ac.th','extra.phichai.ac.th')$$, '23514', null, 'last approved domain guard prevents removing all domains');
 select lives_ok($$delete from public.school_allowed_domains where domain='extra.phichai.ac.th'$$, 'admin may remove domain while another remains');
 reset role;
+
+
+-- Authenticated user 101 is the report owner and sole admin; 102 is a member.
+-- Create deterministic report/claim/lead events as the test owner, then verify recipients under authenticated RLS.
+reset role;
+insert into public.reports (id, school_id, report_type, title, category, description, location_text, last_seen_at, status, created_by)
+select '30000000-0000-4000-8000-000000000001', id, 'missing'::public.report_type, 'Notify report', 'other', 'A deterministic fixture', 'Library', now(), 'pending'::public.report_status, '00000000-0000-4000-8000-000000000101'
+from public.schools where allowed_email_domain='phichai.ac.th';
+insert into public.reports (id, school_id, report_type, title, category, description, location_text, found_at, status, created_by)
+select '30000000-0000-4000-8000-000000000002', id, 'found'::public.report_type, 'Notify claim', 'other', 'A deterministic fixture', 'Gym', now(), 'approved'::public.report_status, '00000000-0000-4000-8000-000000000101'
+from public.schools where allowed_email_domain='phichai.ac.th';
+insert into public.claims (id, report_id, claimant_id, private_details, status)
+values ('40000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000102', 'Private claimant details', 'pending'::public.claim_status);
+insert into public.report_leads (id, report_id, submitted_by, message, sighting_location)
+values ('50000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102', 'Private lead message details', 'Library');
+update public.reports set status='approved'::public.report_status where id='30000000-0000-4000-8000-000000000001';
+update public.claims set status='approved'::public.claim_status where id='40000000-0000-4000-8000-000000000001';
+update public.user_settings set notify_report_updates=false where user_id='00000000-0000-4000-8000-000000000101';
+update public.user_settings set notify_claim_lead_updates=false where user_id='00000000-0000-4000-8000-000000000102';
+update public.reports set status='returned'::public.report_status where id='30000000-0000-4000-8000-000000000001';
+update public.claims set status='rejected'::public.claim_status where id='40000000-0000-4000-8000-000000000001';
+insert into public.report_leads (id, report_id, submitted_by, message, sighting_location)
+values ('50000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102', 'Another private lead message', 'Office');
+select is((select count(*)::int from public.foundit_notifications where user_id='00000000-0000-4000-8000-000000000101' and event_type='report_status'), 1, 'report status event notifies report creator while preference enabled only');
+select is((select count(*)::int from public.foundit_notifications where user_id='00000000-0000-4000-8000-000000000102' and event_type='claim_status'), 1, 'claim status event notifies claimant while preference enabled only');
+select is((select count(*)::int from public.foundit_notifications where user_id='00000000-0000-4000-8000-000000000101' and event_type='new_lead'), 1, 'new lead event notifies report owner while preference enabled only');
+select is((select count(*)::int from public.foundit_notifications where user_id='00000000-0000-4000-8000-000000000101' and event_type='report_status' and report_id='30000000-0000-4000-8000-000000000001'), 1, 'report notification points to the changed report');
+select is((select count(*)::int from public.foundit_notifications where user_id='00000000-0000-4000-8000-000000000102' and event_type='claim_status' and report_id='30000000-0000-4000-8000-000000000002'), 1, 'claim notification points to the claim report');
+select is((select count(*)::int from public.foundit_notifications where user_id='00000000-0000-4000-8000-000000000101' and event_type='new_lead' and report_id='30000000-0000-4000-8000-000000000001'), 1, 'lead notification points to the lead report');
+select ok(not exists(select 1 from pg_attribute where attrelid='public.foundit_notifications'::regclass and attnum>0 and not attisdropped and attname in ('message','private_details','sighting_location')), 'notification schema has no private message fields');
+select ok(not exists(select 1 from public.foundit_notifications n where n.report_id in ('30000000-0000-4000-8000-000000000001','30000000-0000-4000-8000-000000000002') and (to_jsonb(n) ? 'message' or to_jsonb(n) ? 'private_details' or to_jsonb(n) ? 'sighting_location')), 'notification rows persist no private message fields');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000101', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000000101","email":"admin@phichai.ac.th","role":"authenticated"}', true);
+select is((select count(*)::int from public.foundit_notifications where event_type='report_status' and report_id='30000000-0000-4000-8000-000000000001'), 1, 'authenticated report owner can read own status notification');
+select is((select count(*)::int from public.foundit_notifications where event_type='new_lead' and report_id='30000000-0000-4000-8000-000000000001'), 1, 'authenticated report owner can read lead notification');
+select is((select count(*)::int from public.foundit_notifications where user_id='00000000-0000-4000-8000-000000000102'), 0, 'authenticated report owner cannot read claimant notification');
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000102', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-000000000102","email":"member@phichai.ac.th","role":"authenticated"}', true);
+select is((select count(*)::int from public.foundit_notifications where event_type='claim_status' and report_id='30000000-0000-4000-8000-000000000002'), 1, 'authenticated claimant can read own status notification');
+reset role;
+
+-- The last active admin cannot be demoted; demotion is valid once a second admin remains.
+select throws_ok($$update public.profiles set role='teacher'::public.user_role where id='00000000-0000-4000-8000-000000000101'$$, '23514', null, 'cannot demote the sole remaining school admin');
+update public.profiles set role='admin'::public.user_role where id='00000000-0000-4000-8000-000000000104';
+select lives_ok($$update public.profiles set role='teacher'::public.user_role where id='00000000-0000-4000-8000-000000000101'$$, 'demotion succeeds when another active admin remains');
 
 select * from finish();
 rollback;

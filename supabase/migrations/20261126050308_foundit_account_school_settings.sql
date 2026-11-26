@@ -86,6 +86,10 @@ revoke all on function private.is_school_admin(uuid) from public, anon;
 grant usage on schema private to authenticated;
 grant execute on function private.is_school_admin(uuid) to authenticated;
 
+-- Grants are additive: clear inherited table/column privileges for client roles,
+-- then restore only the operations intended by this migration. Owner/service_role
+-- privileges are deliberately untouched.
+revoke all on public.profiles, public.storage_locations from public, anon, authenticated;
 grant select on public.profiles, public.storage_locations to authenticated;
 grant update (display_name) on public.profiles to authenticated;
 create or replace function public.change_school_member_role(p_target_user_id uuid, p_new_role public.user_role)
