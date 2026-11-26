@@ -37,3 +37,70 @@ No local PostgreSQL, Docker, Supabase CLI, or `pg_prove` executable is available
 ## Scope and commit
 
 Only Task 6 source/tests and the two requested task-report bookkeeping/report files are intended for commit. Pre-existing untracked `docs/research/`, `docs/superpowers/plans/`, and `docs/superpowers/specs/` content remains untouched and excluded.
+
+
+## Scoped notification-navigation fix round (2026-11-26)
+
+Addressed the open finding `src/App.tsx:214` without changing the existing member/admin route behavior. The Notifications entry now records pending intent and changes to Account; an effect consumes that intent only after the account profile-backed content has rendered. The notifications heading is `tabIndex={-1}` and receives programmatic focus, which preserves keyboard accessibility and lets the browser perform its native focus scroll. No `scrollIntoView` call is used. Pending intent is retained while account data is loading (and while a retryable load error leaves the heading absent), and cleared after focus or when leaving Account.
+
+### TDD evidence
+
+- Added a regression in `src/App.test.tsx` first. It begins on Board, delays the profile response, activates Notifications, verifies the loading state has no target, then resolves the profile and asserts the rendered Notifications heading receives focus.
+- **RED:** `npm test -- src/App.test.tsx` exited 1. Exact failure: `FAIL src/App.test.tsx > member account navigation and initial load > focuses the notifications heading after opening Notifications from the board and account data loads`; `Expected element with focus: <h2 id="notifications-heading">Notifications</h2>`; `Received element with focus: <button aria-label="Notifications" ...>`. Summary: `Test Files 1 failed (1)` and `Tests 1 failed | 5 passed (6)`. This reproduced the missing post-render focus on the original code.
+- Added the pending-intent effect and focusable target; the regression then passed. **GREEN:** `npm test -- src/App.test.tsx` — exit 0; `Test Files 1 passed (1)`; `Tests 6 passed (6)`.
+
+### Verification command outputs
+
+Commands were run freshly after the fix. Exact output (including exit status):
+
+```text
+$ npm test -- src/App.test.tsx
+> foundit@0.1.0 test
+> vitest run src/App.test.tsx
+ RUN  v4.1.12 /tmp/foundit-account-settings
+ ✓ src/App.test.tsx (6 tests) 3604ms
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+EXIT_CODE=0
+
+$ npm test
+> foundit@0.1.0 test
+> vitest run
+ RUN  v4.1.12 /tmp/foundit-account-settings
+ ✓ src/components/AccountSettingsView.test.tsx (12 tests) 1183ms
+ ✓ src/components/ReportLeadInbox.test.tsx (6 tests) 442ms
+ ✓ src/components/SchoolSettingsView.test.tsx (12 tests) 1594ms
+ ✓ src/lib/i18n.test.ts (4 tests) 65ms
+ ✓ src/lib/account-settings.test.ts (24 tests) 23ms
+ ✓ src/lib/auth.test.ts (4 tests) 10ms
+ ✓ src/lib/report-leads.test.ts (7 tests) 14ms
+ ✓ src/lib/lead-validation.test.ts (5 tests) 7ms
+ ✓ src/lib/lead-access.test.ts (7 tests) 6ms
+ ✓ src/App.test.tsx (6 tests) 4131ms
+ ✓ src/components/LeadModal.test.tsx (7 tests) 5191ms
+ Test Files  11 passed (11)
+      Tests  94 passed (94)
+EXIT_CODE=0
+
+$ npx tsc --noEmit
+EXIT_CODE=0
+
+$ npm run build
+> foundit@0.1.0 build
+> tsc && vite build
+vite v8.3.6 building client environment for production...
+✓ 1823 modules transformed.
+dist/assets/index-DSfDoIG_.js   746.30 kB │ gzip: 220.49 kB
+(!) Some chunks are larger than 500 kB after minification.
+✓ built in 1.16s
+EXIT_CODE=0
+
+$ git diff --check
+EXIT_CODE=0
+```
+
+The production build succeeds with the existing/general Vite large-chunk advisory (746.30 kB minified JS exceeds the 500 kB advisory threshold). No hosted Supabase was contacted. Existing unrelated untracked `docs/research/`, `docs/superpowers/plans/`, and `docs/superpowers/specs/` content was left untouched.
+
+## Fix-round commit
+
+Committed as `a2a9b42`; the fix commit includes only `src/App.tsx`, `src/components/AccountSettingsView.tsx`, `src/App.test.tsx`, and this report.

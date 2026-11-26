@@ -113,4 +113,23 @@ describe('member account navigation and initial load', () => {
     expect(document.documentElement).toHaveAttribute('lang', 'en');
     expect(screen.getByRole('button', { name: /notifications/i })).toBeInTheDocument();
   });
+
+  it('focuses the notifications heading after opening Notifications from the board and account data loads', async () => {
+    let resolveProfile!: (value: typeof profile) => void;
+    accountFetch.profile.mockImplementation(() => new Promise((resolve) => { resolveProfile = resolve; }));
+    accountFetch.settings.mockResolvedValue({ display_name: 'Niran', language: 'en', notify_report_updates: true, notify_claim_updates: true });
+    accountFetch.notifications.mockResolvedValue([]);
+    accountFetch.reports.mockResolvedValue([]);
+    accountFetch.claims.mockResolvedValue([]);
+    accountFetch.requests.mockResolvedValue([]);
+    render(<AppShell user={member} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /notifications/i }));
+    expect(screen.getByRole('heading', { name: /loading account settings/i })).toBeInTheDocument();
+    expect(document.activeElement).not.toHaveAttribute('id', 'notifications-heading');
+
+    resolveProfile(profile);
+    const heading = await screen.findByRole('heading', { name: 'Notifications' });
+    await waitFor(() => expect(heading).toHaveFocus());
+  });
 });

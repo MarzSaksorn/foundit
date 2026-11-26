@@ -227,6 +227,7 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
   const [accountRequests, setAccountRequests] = useState<AccountRequest[]>([]);
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountError, setAccountError] = useState<string | null>(null);
+  const [notificationEntryPending, setNotificationEntryPending] = useState(false);
   const [reports, setReports] = useState<Report[]>(isSupabaseConfigured ? [] : initialReports);
   const [reportsLoading, setReportsLoading] = useState(isSupabaseConfigured);
   const [reportsError, setReportsError] = useState<string | null>(null);
@@ -334,6 +335,17 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
       .finally(() => setAccountLoading(false));
   }, [user?.id]);
   useEffect(() => { if (view === 'account' && user) refreshAccount(); }, [view, user?.id, refreshAccount]);
+  useEffect(() => {
+    if (!notificationEntryPending) return;
+    if (view !== 'account') {
+      setNotificationEntryPending(false);
+      return;
+    }
+    const heading = document.getElementById('notifications-heading');
+    if (!heading) return;
+    heading.focus();
+    setNotificationEntryPending(false);
+  }, [notificationEntryPending, view, accountProfile]);
 
   const updateFilter = (key: keyof typeof filters, value: string) => {
     setFilters((current) => ({ ...current, [key]: value }));
@@ -431,7 +443,7 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
       <main className="main-content">
         <header className="topbar">
           <div className="breadcrumbs"><span>Phichai School</span><span className="crumb-slash">/</span><strong>{view === 'account' ? t('Account settings') : view === 'school-settings' ? t('School settings') : view === 'board' ? t('Community board') : t('Teacher moderation')}</strong></div>
-          <div className="topbar-actions"><LanguageToggle language={language} />{user && <button type="button" className="help-button notification-entry" aria-label={t('Notifications')} title={t('Notifications')} onClick={() => { setView('account'); setSelectedId(null); document.getElementById('notifications-heading')?.scrollIntoView({ block: 'start' }); }}>{accountNotifications.some((item) => !item.read_at) ? '•' : '○'}</button>}<span className="saved-note"><span className="online-dot" />{isSupabaseConfigured ? t('Live Supabase data') : t('Seeded demo data')}</span><button className="help-button" aria-label={t('Help')}>?</button><span className="avatar mini" aria-hidden="true">{user ? (user.email?.slice(0, 2).toUpperCase() || 'PS') : 'MR'}</span></div>
+          <div className="topbar-actions"><LanguageToggle language={language} />{user && <button type="button" className="help-button notification-entry" aria-label={t('Notifications')} title={t('Notifications')} onClick={() => { setNotificationEntryPending(true); setView('account'); setSelectedId(null); }}>{accountNotifications.some((item) => !item.read_at) ? '•' : '○'}</button>}<span className="saved-note"><span className="online-dot" />{isSupabaseConfigured ? t('Live Supabase data') : t('Seeded demo data')}</span><button className="help-button" aria-label={t('Help')}>?</button><span className="avatar mini" aria-hidden="true">{user ? (user.email?.slice(0, 2).toUpperCase() || 'PS') : 'MR'}</span></div>
         </header>
 
         {view === 'account' && user && !accountProfile && accountLoading && <section className="board-page board-state" aria-live="polite" role="status"><div className="loading-pulse" /><h1>{t('Loading account settings…')}</h1></section>}
