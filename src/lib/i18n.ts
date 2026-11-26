@@ -1,9 +1,12 @@
 import { useSyncExternalStore } from 'react';
+import { fetchOwnAccountSettings, updateOwnAccountSettings } from './account-settings';
 
 export type Language = 'en' | 'th';
 
 const translations: Record<Language, Record<string, string>> = {
   en: {
+    'Sign in with Google to browse reports, share a missing item, or send a private claim. Access is provided by your school.': 'Sign in with Google to browse reports, share a missing item, or send a private claim. Access is provided by your school.',
+    'This Google account is not set up for FoundIt. Ask your school administrator for access.': 'This Google account is not set up for FoundIt. Ask your school administrator for access.',
     'Send a private lead': 'Send a private lead',
     'Your lead was sent privately.': 'Your lead was sent privately.',
     'Private leads': 'Private leads',
@@ -30,6 +33,8 @@ const translations: Record<Language, Record<string, string>> = {
     'lead.validation.locationTooLong': 'Keep the location to 120 characters or fewer.',
   },
   th: {
+    'Sign in with Google to browse reports, share a missing item, or send a private claim. Access is provided by your school.': 'ลงชื่อเข้าใช้ด้วย Google เพื่อดูรายงาน แจ้งของหาย หรือส่งคำขอเคลมส่วนตัว โรงเรียนเป็นผู้กำหนดสิทธิ์การเข้าใช้งาน',
+    'This Google account is not set up for FoundIt. Ask your school administrator for access.': 'บัญชี Google นี้ยังไม่ได้รับการตั้งค่าให้ใช้ FoundIt โปรดติดต่อผู้ดูแลระบบโรงเรียนเพื่อขอสิทธิ์',
     'Send a private lead': 'ส่งเบาะแสส่วนตัว',
     'Your lead was sent privately.': 'ส่งเบาะแสของคุณเป็นการส่วนตัวแล้ว',
     'Private leads': 'เบาะแสส่วนตัว',
@@ -61,12 +66,8 @@ const translations: Record<Language, Record<string, string>> = {
     'School community': 'ชุมชนโรงเรียน',
     'Find it.': 'ตามหาให้พบ',
     'Bring it home.': 'พากลับบ้าน',
-    'Sign in with your Phichai School Google account to browse reports, share a missing item, or send a private claim.': 'ลงชื่อเข้าใช้ด้วยบัญชี Google ของ Phichai School เพื่อดูรายงาน แจ้งของหาย หรือส่งคำขอเคลมแบบส่วนตัว',
     'Continue with Google': 'ดำเนินการต่อด้วย Google',
     'Opening Google…': 'กำลังเปิด Google…',
-    'Only': 'เฉพาะบัญชี',
-    'accounts can access FoundIt.': 'เท่านั้นที่เข้าใช้ FoundIt ได้',
-    'Use a Google account ending in @phichai.ac.th.': 'โปรดใช้บัญชี Google ที่ลงท้ายด้วย @phichai.ac.th',
     'Your session expired. Please sign in again to continue.': 'เซสชันของคุณหมดอายุแล้ว โปรดลงชื่อเข้าใช้อีกครั้งเพื่อดำเนินการต่อ',
     'Workspace': 'พื้นที่ทำงาน',
     'Board': 'บอร์ดประกาศ',
@@ -309,14 +310,35 @@ if (typeof window !== 'undefined') {
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => listeners.delete(listener); };
 const getSnapshot = () => currentLanguage;
+let authenticatedUserId: string | null = null;
 
-export function setLanguage(language: Language) {
+function applyLanguage(language: Language) {
   currentLanguage = language;
   if (typeof window !== 'undefined') {
     window.localStorage.setItem('foundit-language', language);
     document.documentElement.lang = language;
   }
   listeners.forEach((listener) => listener());
+}
+
+export function getLanguage(): Language { return currentLanguage; }
+
+export function setAuthenticatedUserId(userId: string | null) { authenticatedUserId = userId; }
+
+export async function restoreLanguageForUser(userId: string): Promise<void> {
+  const settings = await fetchOwnAccountSettings(userId);
+  applyLanguage(settings.language);
+}
+
+export async function saveLanguageForUser(userId: string, language: Language): Promise<void> {
+  const settings = await fetchOwnAccountSettings(userId);
+  await updateOwnAccountSettings(userId, { ...settings, language });
+  applyLanguage(language);
+}
+
+export function setLanguage(language: Language) {
+  applyLanguage(language);
+  if (authenticatedUserId) void saveLanguageForUser(authenticatedUserId, language).catch(() => undefined);
 }
 
 export const t = (text: string) => translations[currentLanguage][text] ?? text;

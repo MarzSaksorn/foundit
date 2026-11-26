@@ -15,7 +15,7 @@ import {
   type ReportStatus,
   type ReportType,
 } from './lib/reports';
-import { PHICHAI_DOMAIN, PHICHAI_SCHOOL, signInWithGoogle, validateSchoolUser } from './lib/auth';
+import { PHICHAI_SCHOOL, signInWithGoogle, validateSchoolUser } from './lib/auth';
 import {
   createClaim,
   createReport,
@@ -35,7 +35,7 @@ import {
   type TeacherClaim,
 } from './lib/live-reports';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
-import { setLanguage, t, useI18n } from './lib/i18n';
+import { restoreLanguageForUser, setAuthenticatedUserId, setLanguage, t, useI18n } from './lib/i18n';
 import LeadModal from './components/LeadModal';
 import ReportLeadInbox from './components/ReportLeadInbox';
 import { createReportLead, type NewReportLeadInput, type ReportLead } from './lib/live-reports';
@@ -160,12 +160,17 @@ function App() {
 
     let active = true;
     const syncUser = async (candidate: User | null) => {
-      const result = await validateSchoolUser(candidate);
+      const result = await validateSchoolUser(candidate).catch(() => ({ allowed: false, user: null }));
       if (!active) return;
+      setAuthenticatedUserId(result.allowed && result.user ? result.user.id : null);
+      if (result.allowed && result.user) {
+        await restoreLanguageForUser(result.user.id).catch(() => undefined);
+        if (!active) return;
+      }
       setUser(result.user);
       setAuthLoading(false);
       if (result.allowed) setAuthError('');
-      else if (candidate) setAuthError(`Use a Google account ending in @${PHICHAI_DOMAIN}.`);
+      else if (candidate) setAuthError(t('This Google account is not set up for FoundIt. Ask your school administrator for access.'));
     };
 
     void supabase.auth.getSession().then(({ data }) => syncUser(data.session?.user ?? null));
@@ -203,7 +208,7 @@ function SignInScreen({ error }: { error: string }) {
       setSigningIn(false);
     }
   };
-  return <main className="auth-screen"><div className="auth-card"><LanguageToggle language={language} /><div className="brand-lockup auth-brand"><div className="brand-mark">F<span>●</span></div><div><div className="brand-name">Found<span>It</span></div><div className="brand-school">{PHICHAI_SCHOOL}</div></div></div><div className="eyebrow"><span className="eyebrow-line" />{t('School community')}</div><h1>{t('Find it.')}<br /><em>{t('Bring it home.')}</em></h1><p className="auth-copy">{t('Sign in with your Phichai School Google account to browse reports, share a missing item, or send a private claim.')}</p><button className="button primary full auth-button" onClick={() => void handleSignIn()} disabled={signingIn}>{t(signingIn ? 'Opening Google…' : 'Continue with Google')}</button><p className="auth-domain">{t('Only')} <strong>@{PHICHAI_DOMAIN}</strong> {t('accounts can access FoundIt.')}</p>{signInError && <div className="form-error" role="alert">{signInError}</div>}</div></main>;
+  return <main className="auth-screen"><div className="auth-card"><LanguageToggle language={language} /><div className="brand-lockup auth-brand"><div className="brand-mark">F<span>●</span></div><div><div className="brand-name">Found<span>It</span></div><div className="brand-school">{PHICHAI_SCHOOL}</div></div></div><div className="eyebrow"><span className="eyebrow-line" />{t('School community')}</div><h1>{t('Find it.')}<br /><em>{t('Bring it home.')}</em></h1><p className="auth-copy">{t('Sign in with Google to browse reports, share a missing item, or send a private claim. Access is provided by your school.')}</p><button className="button primary full auth-button" onClick={() => void handleSignIn()} disabled={signingIn}>{t(signingIn ? 'Opening Google…' : 'Continue with Google')}</button>{signInError && <div className="form-error" role="alert">{signInError}</div>}</div></main>;
 }
 
 function AppShell({ user, onSessionExpired }: { user?: User; onSessionExpired?: () => void }) {
