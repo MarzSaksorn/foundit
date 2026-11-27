@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent, ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { Button, Calendar, Card, Description, FieldError, Form, Input, Label, ListBox, Modal, Select, TextArea, TextField } from '@heroui/react';
@@ -242,6 +242,9 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
   const [leadInboxRefresh, setLeadInboxRefresh] = useState(0);
   const [teacherClaims, setTeacherClaims] = useState<TeacherClaim[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const reportListScrollY = useRef(0);
+  const reportListView = useRef<View>('board');
+  const lastSelectedReport = useRef<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerType, setComposerType] = useState<ReportType>('missing');
   const [claimOpen, setClaimOpen] = useState(false);
@@ -262,6 +265,18 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
     const match = window.location.pathname.match(/^\/reports\/(.+)$/);
     if (match) setSelectedId(decodeURIComponent(match[1]));
   }, []);
+
+  useLayoutEffect(() => {
+    if (selectedId) {
+      window.scrollTo(0, 0);
+      lastSelectedReport.current = selectedId;
+      return;
+    }
+
+    if (!lastSelectedReport.current) return;
+    if (view === reportListView.current) window.scrollTo(0, reportListScrollY.current);
+    lastSelectedReport.current = null;
+  }, [selectedId, view]);
 
   useEffect(() => {
     const client = supabase;
@@ -397,6 +412,12 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
     setComposerOpen(true);
   };
 
+  const openReport = (id: string) => {
+    reportListScrollY.current = window.scrollY;
+    reportListView.current = view;
+    setSelectedId(id);
+  };
+
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="Main navigation">
@@ -453,8 +474,8 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
         {view === 'school-settings' && user && profileRole === 'admin' && schoolId && <SchoolSettingsView profile={{ id: user.id, school_id: schoolId, role: 'admin' }} />}
         {view === 'board' && !selectedReport && reportsLoading && <BoardLoading />}
         {view === 'board' && !selectedReport && !reportsLoading && reportsError && <BoardError onRetry={() => setReloadKey((key) => key + 1)} />}
-        {view === 'board' && !selectedReport && !reportsLoading && !reportsError && <BoardView reports={filteredReports} myReports={myReports} total={reports.filter((report) => ['approved', 'claimed'].includes(report.status)).length} filters={filters} updateFilter={updateFilter} onOpenReport={setSelectedId} onOpenComposer={openComposer} />}
-        {view === 'moderation' && canModerate && !selectedReport && <ModerationView reports={reports} claims={teacherClaims} viewerRole={profileRole || 'teacher'} onOpenReport={setSelectedId} onDecideReport={decideReport} onDecideClaim={decideClaim} />}
+        {view === 'board' && !selectedReport && !reportsLoading && !reportsError && <BoardView reports={filteredReports} myReports={myReports} total={reports.filter((report) => ['approved', 'claimed'].includes(report.status)).length} filters={filters} updateFilter={updateFilter} onOpenReport={openReport} onOpenComposer={openComposer} />}
+        {view === 'moderation' && canModerate && !selectedReport && <ModerationView reports={reports} claims={teacherClaims} viewerRole={profileRole || 'teacher'} onOpenReport={openReport} onDecideReport={decideReport} onDecideClaim={decideClaim} />}
         {selectedReport && <ReportDetail key={`${selectedReport.id}-${leadInboxRefresh}`} report={selectedReport} claim={ownClaims.find((claim) => claim.report_id === selectedReport.id)} canModerate={canModerate} viewerId={user?.id} demoMode={!isSupabaseConfigured} demoLeads={demoLeads.filter((lead) => lead.report_id === selectedReport.id)} onOpenLead={() => setLeadModalOpen(true)} onBack={() => setSelectedId(null)} onClaim={() => setClaimOpen(true)} onRequestReturn={() => setReturnConfirm(selectedReport)} showToast={showToast} />}
       </main>
 

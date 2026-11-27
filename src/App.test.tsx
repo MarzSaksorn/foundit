@@ -168,3 +168,40 @@ describe('report composer accessibility', () => {
     expect(reachedFileChooser).toBe(true);
   });
 });
+
+describe('report detail navigation', () => {
+  afterEach(() => {
+    cleanup();
+    setLanguage('en');
+    vi.restoreAllMocks();
+  });
+
+  it('scrolls to the top when a report detail opens', async () => {
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    render(<AppShell />);
+
+    await userEvent.click(screen.getByRole('button', { name: /navy blue backpack/i }));
+
+    expect(await screen.findByRole('heading', { name: 'Navy blue backpack' })).toBeInTheDocument();
+    await waitFor(() => expect(scrollTo).toHaveBeenCalledWith(0, 0));
+  });
+
+  it('restores the list position when returning from report detail', async () => {
+    const originalScrollY = Object.getOwnPropertyDescriptor(window, 'scrollY');
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 372 });
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+
+    try {
+      render(<AppShell />);
+      await userEvent.click(screen.getByRole('button', { name: /navy blue backpack/i }));
+      expect(await screen.findByRole('heading', { name: 'Navy blue backpack' })).toBeInTheDocument();
+      await waitFor(() => expect(scrollTo).toHaveBeenNthCalledWith(1, 0, 0));
+
+      await userEvent.click(screen.getByRole('button', { name: /back to board/i }));
+      expect(await screen.findByRole('heading', { name: /look for it/i })).toBeInTheDocument();
+      await waitFor(() => expect(scrollTo).toHaveBeenNthCalledWith(2, 0, 372));
+    } finally {
+      if (originalScrollY) Object.defineProperty(window, 'scrollY', originalScrollY);
+    }
+  });
+});
