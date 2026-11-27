@@ -70,9 +70,7 @@ function configureSuccessfulLoad() {
 
 function makeLiveReport(overrides: Partial<Report> & Pick<Report, 'id' | 'title'>): Report {
   return {
-    id: overrides.id,
     type: 'missing',
-    title: overrides.title,
     category: 'School supplies',
     description: 'A school report for integration testing.',
     dateLabel: 'Last seen today',
