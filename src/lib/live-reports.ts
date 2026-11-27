@@ -319,6 +319,34 @@ export async function createReportLead(userId: string, reportId: string, input: 
   }
   return lead;
 }
+
+export async function fetchReportLeadCounts(reportIds: readonly string[]): Promise<Record<string, number>> {
+  const counts = new Map(reportIds.map((reportId) => [reportId, 0] as const));
+  if (counts.size === 0) return {};
+
+  const pageSize = 500;
+  const client = requireSupabase();
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await client
+      .from('report_leads')
+      .select('report_id')
+      .in('report_id', [...reportIds])
+      .order('id', { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+
+    const rows = data ?? [];
+    for (const row of rows) {
+      const count = counts.get(row.report_id);
+      if (count !== undefined) counts.set(row.report_id, count + 1);
+    }
+    if (rows.length < pageSize) break;
+  }
+
+  return Object.fromEntries(counts);
+}
+
 export async function fetchReportLeads(reportId: string): Promise<ReportLead[]> {
   const client = requireSupabase();
   const { data, error } = await client
