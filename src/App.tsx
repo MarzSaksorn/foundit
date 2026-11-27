@@ -250,6 +250,9 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
   const [focusLeadInbox, setFocusLeadInbox] = useState(false);
   const [returnToMyReports, setReturnToMyReports] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuAnchorRef = useRef<HTMLDivElement>(null);
+  const accountMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const reportListScrollY = useRef(0);
   const reportListView = useRef<View>('board');
   const lastSelectedReport = useRef<string | null>(null);
@@ -261,6 +264,30 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
   const [toastTone, setToastTone] = useState<ToastTone>('success');
   const toastTimer = useRef<number | null>(null);
   const [filters, setFilters] = useState({ query: '', type: 'all' as 'all' | ReportType, category: 'all', location: 'all', status: 'all' as 'all' | ReportStatus, date: 'all' as 'all' | 'week' | 'older' });
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+
+    const closeOnOutsideInteraction = (event: PointerEvent | FocusEvent) => {
+      if (event.target instanceof Node && !accountMenuAnchorRef.current?.contains(event.target)) {
+        setAccountMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setAccountMenuOpen(false);
+      accountMenuTriggerRef.current?.focus();
+    };
+
+    document.addEventListener('pointerdown', closeOnOutsideInteraction);
+    document.addEventListener('focusin', closeOnOutsideInteraction);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideInteraction);
+      document.removeEventListener('focusin', closeOnOutsideInteraction);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [accountMenuOpen]);
 
   const canModerate = !isSupabaseConfigured || ['teacher', 'moderator', 'admin'].includes(profileRole || '');
   const filteredReports = useMemo(() => filterReports(reports, filters).filter((report) => filters.status === 'all' ? ['approved', 'claimed'].includes(report.status) : report.status === filters.status), [reports, filters]);
@@ -497,27 +524,27 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
           {user && <button type="button" className={`nav-item ${view === 'my-reports' ? 'active' : ''}`} aria-current={view === 'my-reports' ? 'page' : undefined} onClick={() => { setView('my-reports'); setSelectedId(null); }}>
             <Icon name="inbox" /> <span>{t('My Reports')}</span>
           </button>}
-          {user && <button type="button" className={`nav-item ${view === 'account' ? 'active' : ''}`} aria-current={view === 'account' ? 'page' : undefined} onClick={() => { setView('account'); setSelectedId(null); }}>
-            <Icon name="settings" /> <span>{t('Your account')}</span>
-          </button>}
-          {user && profileRole === 'admin' && <button type="button" className={`nav-item ${view === 'school-settings' ? 'active' : ''}`} aria-current={view === 'school-settings' ? 'page' : undefined} onClick={() => { setView('school-settings'); setSelectedId(null); }}>
-            <Icon name="settings" /> <span>{t('School settings')}</span>
-          </button>}
         </nav>
-
-        <div className="sidebar-section-label">{t('Shortcuts')}</div>
-        <div className="shortcut-list">
-          <button onClick={() => openComposer('missing')}><span className="shortcut-dot coral" />{t('Report something missing')}</button>
-          <button onClick={() => openComposer('found')}><span className="shortcut-dot mint" />{t('Report something found')}</button>
-        </div>
 
         <div className="sidebar-bottom">
           <div className="sidebar-note">
             <div className="sidebar-note-icon"><Icon name="search" size={17} /></div>
             <div><strong>{t('Small leads add up')}</strong><span>{t('Every report helps a classmate.')}</span></div>
           </div>
-          <div className="account-row">
-            <div className="avatar">{user ? (user.email?.slice(0, 2).toUpperCase() || 'PS') : 'MR'}</div><div className="account-copy"><strong>{accountSettings?.display_name || user?.email || 'Ms. Rivera'}</strong><span>{user ? t('Member · Phichai School') : t('Teacher · Phichai')}</span></div><button type="button" className="more-button" aria-label={t('Account menu')} onClick={() => { setView('account'); setSelectedId(null); }}>•••</button>
+          <div className="account-menu-anchor" ref={accountMenuAnchorRef}>
+            <div className="account-row">
+              <div className="avatar">{user ? (user.email?.slice(0, 2).toUpperCase() || 'PS') : 'MR'}</div>
+              <div className="account-copy"><strong>{accountSettings?.display_name || user?.email || 'Ms. Rivera'}</strong><span>{user ? t('Member · Phichai School') : t('Teacher · Phichai')}</span></div>
+              {user && <button ref={accountMenuTriggerRef} type="button" className="more-button" aria-label={t('Account menu')} aria-expanded={accountMenuOpen} aria-controls="account-menu-panel" onClick={() => setAccountMenuOpen((open) => !open)}>•••</button>}
+            </div>
+            {user && accountMenuOpen && <div id="account-menu-panel" className="account-menu-panel">
+              <button type="button" className={`account-menu-item ${view === 'account' ? 'active' : ''}`} aria-current={view === 'account' ? 'page' : undefined} onClick={() => { setView('account'); setSelectedId(null); setAccountMenuOpen(false); }}>
+                <Icon name="settings" size={16} /><span>{t('Your account')}</span>
+              </button>
+              {profileRole === 'admin' && <button type="button" className={`account-menu-item ${view === 'school-settings' ? 'active' : ''}`} aria-current={view === 'school-settings' ? 'page' : undefined} onClick={() => { setView('school-settings'); setSelectedId(null); setAccountMenuOpen(false); }}>
+                <Icon name="settings" size={16} /><span>{t('School settings')}</span>
+              </button>}
+            </div>}
           </div>
         </div>
       </aside>

@@ -34,6 +34,20 @@ vi.mock('./lib/account-settings', () => ({
   updateOwnAccountSettings: vi.fn(),
   markNotificationRead: vi.fn(),
   submitDeletionRequest: vi.fn(),
+  fetchSchoolMembers: vi.fn().mockResolvedValue([]),
+  fetchApprovedDomains: vi.fn().mockResolvedValue([]),
+  fetchStorageLocations: vi.fn().mockResolvedValue([]),
+  fetchReviewSettings: vi.fn().mockResolvedValue({ missing_reports_need_review: false, found_reports_need_review: false }),
+  fetchSchoolAccountRequests: vi.fn().mockResolvedValue([]),
+  changeSchoolMemberRole: vi.fn(),
+  addApprovedDomain: vi.fn(),
+  removeApprovedDomain: vi.fn(),
+  createStorageLocation: vi.fn(),
+  updateStorageLocation: vi.fn(),
+  removeStorageLocation: vi.fn(),
+  updateReviewSettings: vi.fn(),
+  updateAccountRequestStatus: vi.fn(),
+  normalizeApprovedDomain: vi.fn(),
 }));
 vi.mock('./lib/supabase', () => ({
   get isSupabaseConfigured() { return liveTestRuntime.enabled; },
@@ -103,21 +117,43 @@ describe('member account navigation and initial load', () => {
   afterEach(() => {
     cleanup();
     setLanguage('en');
+    liveTestRuntime.enabled = false;
     vi.clearAllMocks();
   });
 
-  it('opens Account Settings from a visible keyboard-operable navigation control', async () => {
+  it('opens account settings from a keyboard-operable profile menu', async () => {
     configureSuccessfulLoad();
     render(<AppShell user={member} />);
 
-    const accountNavigation = within(screen.getByRole('navigation')).getByRole('button', { name: /your account/i });
-    accountNavigation.focus();
-    expect(accountNavigation).toHaveFocus();
-    await userEvent.setup().keyboard('{Enter}');
+    const user = userEvent.setup();
+    const accountMenu = screen.getByRole('button', { name: /account menu/i });
+    accountMenu.focus();
+    expect(accountMenu).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(await screen.findByRole('button', { name: 'Your account' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: /look for it/i })).toBeVisible();
+    await user.keyboard('{Tab}');
+    expect(screen.getByRole('button', { name: 'Your account' })).toHaveFocus();
+    await user.keyboard('{Enter}');
 
     expect(await screen.findByRole('heading', { name: 'Account settings' })).toBeInTheDocument();
     expect(screen.getByText('Google account')).toBeInTheDocument();
     expect(screen.queryByText(/admin settings/i)).not.toBeInTheDocument();
+  });
+
+  it('removes report shortcuts from the sidebar without removing board report actions', async () => {
+    configureSuccessfulLoad();
+    render(<AppShell user={member} />);
+
+    const sidebar = screen.getByRole('complementary', { name: 'Main navigation' });
+    const workspaceNavigation = within(sidebar).getByRole('navigation');
+    expect(within(workspaceNavigation).queryByRole('button', { name: 'Your account' })).not.toBeInTheDocument();
+    expect(within(workspaceNavigation).queryByRole('button', { name: 'School settings' })).not.toBeInTheDocument();
+    expect(within(sidebar).queryByText('Shortcuts')).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole('button', { name: 'Report something missing' })).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole('button', { name: 'Report something found' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /report missing/i })).toBeVisible();
+    expect(screen.getByRole('button', { name: /report found/i })).toBeVisible();
   });
 
   it('shows an accessible error and retry action when the initial profile fetch fails', async () => {
@@ -128,7 +164,8 @@ describe('member account navigation and initial load', () => {
     accountFetch.claims.mockResolvedValue([]);
     accountFetch.requests.mockResolvedValue([]);
     render(<AppShell user={member} />);
-    fireEvent.click(screen.getByRole('button', { name: /your account/i }));
+    await userEvent.click(screen.getByRole('button', { name: /account menu/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Your account' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Unable to load account settings. Please try again.');
     const retry = screen.getByRole('button', { name: /refresh settings|try again/i });
@@ -139,11 +176,14 @@ describe('member account navigation and initial load', () => {
     expect(accountFetch.profile).toHaveBeenCalledTimes(2);
   });
 
-  it('opens account settings from the account menu and can return to the board', async () => {
+  it('opens account settings from the profile menu and can return to the board', async () => {
     configureSuccessfulLoad();
     render(<AppShell user={member} />);
 
     await userEvent.click(screen.getByRole('button', { name: /account menu/i }));
+    expect(screen.getByRole('heading', { name: /look for it/i })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Your account' })).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'Your account' }));
     expect(await screen.findByRole('heading', { name: 'Account settings' })).toBeInTheDocument();
     await userEvent.click(within(screen.getByRole('navigation')).getByRole('button', { name: /board/i }));
     expect(screen.getByRole('heading', { name: /look for it/i })).toBeInTheDocument();
@@ -153,10 +193,54 @@ describe('member account navigation and initial load', () => {
   it('keeps school settings unavailable to a non-admin and retains the member board', async () => {
     configureSuccessfulLoad();
     render(<AppShell user={member} />);
+    await userEvent.click(screen.getByRole('button', { name: /account menu/i }));
+    expect(screen.getByRole('button', { name: 'Your account' })).toBeVisible();
     expect(screen.queryByRole('button', { name: /school settings/i })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /look for it/i })).toBeInTheDocument();
 
     expect(screen.queryByRole('heading', { name: 'School settings' })).not.toBeInTheDocument();
+  });
+
+  it('allows admins to open School settings from the profile menu', async () => {
+    configureLiveReportLoad([]);
+    accountFetch.profile.mockResolvedValue({ ...profile, role: 'admin' });
+    render(<AppShell user={member} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /account menu/i }));
+    await userEvent.click(await screen.findByRole('button', { name: 'School settings' }));
+
+    expect(await screen.findByRole('heading', { name: 'School settings' })).toBeInTheDocument();
+  });
+
+  it('does not render a dead profile menu for signed-out visitors', () => {
+    render(<AppShell />);
+
+    expect(screen.queryByRole('button', { name: /account menu/i })).not.toBeInTheDocument();
+  });
+
+  it('closes the profile menu on Escape and returns focus to its trigger', async () => {
+    configureSuccessfulLoad();
+    render(<AppShell user={member} />);
+
+    const user = userEvent.setup();
+    const trigger = screen.getByRole('button', { name: /account menu/i });
+    await user.click(trigger);
+    expect(screen.getByRole('button', { name: 'Your account' })).toBeVisible();
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('button', { name: 'Your account' })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('closes the profile menu when the pointer moves outside it', async () => {
+    configureSuccessfulLoad();
+    render(<AppShell user={member} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /account menu/i }));
+    expect(screen.getByRole('button', { name: 'Your account' })).toBeVisible();
+    fireEvent.pointerDown(document.body);
+
+    expect(screen.queryByRole('button', { name: 'Your account' })).not.toBeInTheDocument();
   });
 
   it('switches language in both directions and exposes a notification entry point', async () => {
@@ -200,7 +284,7 @@ describe('report composer accessibility', () => {
     setLanguage('th');
     render(<AppShell />);
 
-    await userEvent.click(within(screen.getByRole('complementary')).getByRole('button', { name: 'แจ้งของที่พบ' }));
+    await userEvent.click(screen.getByRole('button', { name: 'แจ้งของที่พบ' }));
 
     await waitFor(() => expect(document.querySelector('.composer-modal h2')).toBeInTheDocument());
     expect(document.querySelector('.composer-modal h2')).toHaveTextContent('แจ้งของที่พบ');
@@ -209,7 +293,7 @@ describe('report composer accessibility', () => {
   it('keeps the photo file chooser reachable by keyboard', async () => {
     render(<AppShell />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /report something found/i }));
+    await user.click(screen.getByRole('button', { name: /report found/i }));
 
     const fileChooser = screen.getByLabelText(/choose file/i);
     let reachedFileChooser = false;
