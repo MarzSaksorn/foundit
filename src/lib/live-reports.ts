@@ -321,7 +321,8 @@ export async function createReportLead(userId: string, reportId: string, input: 
 }
 
 export async function fetchReportLeadCounts(reportIds: readonly string[]): Promise<Record<string, number>> {
-  const counts = new Map(reportIds.map((reportId) => [reportId, 0] as const));
+  const counts = new Map<string, number>();
+  for (const reportId of reportIds) counts.set(reportId, 0);
   if (counts.size === 0) return {};
 
   const pageSize = 500;
