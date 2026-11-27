@@ -97,6 +97,8 @@ type SupabaseReportRow = {
 
 const SCHOOL_DOMAIN = 'phichai.ac.th';
 const PHOTO_BUCKET = 'foundit-photos';
+const LIVE_REPORT_COLUMNS = 'id, report_type, title, category, description, last_seen_at, found_at, location_text, photo_path, status, created_by, created_at, storage_locations(label, responsible_name)';
+const OWN_REPORT_PAGE_SIZE = 200;
 
 function requireSupabase() {
   if (!supabase) throw new Error('Supabase is not configured.');
@@ -173,12 +175,34 @@ export async function fetchLiveReports(userId: string): Promise<Report[]> {
   const client = requireSupabase();
   const { data, error } = await client
     .from('reports')
-    .select('id, report_type, title, category, description, last_seen_at, found_at, location_text, photo_path, status, created_by, created_at, storage_locations(label, responsible_name)')
+    .select(LIVE_REPORT_COLUMNS)
     .order('created_at', { ascending: false })
     .limit(200);
 
   if (error) throw error;
   return (data || []).map((row) => mapSupabaseReport(row as unknown as SupabaseReportRow, userId));
+}
+
+export async function fetchOwnLiveReports(userId: string): Promise<Report[]> {
+  const client = requireSupabase();
+  const reports: Report[] = [];
+
+  for (let from = 0; ; from += OWN_REPORT_PAGE_SIZE) {
+    const { data, error } = await client
+      .from('reports')
+      .select(LIVE_REPORT_COLUMNS)
+      .eq('created_by', userId)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(from, from + OWN_REPORT_PAGE_SIZE - 1);
+
+    if (error) throw error;
+    const rows = data || [];
+    reports.push(...rows
+      .filter((row) => row.created_by === userId)
+      .map((row) => mapSupabaseReport(row as unknown as SupabaseReportRow, userId)));
+    if (rows.length < OWN_REPORT_PAGE_SIZE) return reports;
+  }
 }
 
 export async function fetchOwnClaims(userId: string): Promise<OwnClaim[]> {

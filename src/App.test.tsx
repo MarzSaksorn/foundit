@@ -11,6 +11,7 @@ const accountFetch = vi.hoisted(() => ({
   claims: vi.fn(),
   requests: vi.fn(),
   liveReports: vi.fn(),
+  ownLiveReports: vi.fn(),
   storageLocations: vi.fn(),
   liveClaims: vi.fn(),
   teacherClaims: vi.fn(),
@@ -44,6 +45,7 @@ vi.mock('./lib/live-reports', async (importOriginal) => {
     ...actual,
     fetchCurrentProfile: accountFetch.profile,
     fetchLiveReports: accountFetch.liveReports,
+    fetchOwnLiveReports: accountFetch.ownLiveReports,
     fetchStorageLocations: accountFetch.storageLocations,
     fetchOwnClaims: accountFetch.liveClaims,
     fetchTeacherClaims: accountFetch.teacherClaims,
@@ -89,6 +91,7 @@ function configureLiveReportLoad(reports: Report[], leadCounts: Record<string, n
   liveTestRuntime.enabled = true;
   accountFetch.profile.mockResolvedValue(profile);
   accountFetch.liveReports.mockResolvedValue(reports);
+  accountFetch.ownLiveReports.mockResolvedValue(reports);
   accountFetch.storageLocations.mockResolvedValue([]);
   accountFetch.liveClaims.mockResolvedValue([]);
   accountFetch.teacherClaims.mockResolvedValue([]);
@@ -261,6 +264,22 @@ describe('My Reports AppShell integration', () => {
     expect(screen.getByRole('heading', { name: 'My found umbrella' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Someone else’s wallet' })).not.toBeInTheDocument();
     await waitFor(() => expect(accountFetch.leadCounts).toHaveBeenCalledWith(['mine-2']));
+  });
+
+  it('lists and opens an owned report that is outside the public board feed', async () => {
+    const boardReport = makeLiveReport({ id: 'board-1', title: 'Recent board report' });
+    const olderOwnedReport = makeLiveReport({ id: 'old-owned', title: 'My archived report', status: 'archived' });
+    configureLiveReportLoad([boardReport], { 'old-owned': 1 });
+    accountFetch.ownLiveReports.mockResolvedValue([olderOwnedReport]);
+    render(<AppShell user={member} />);
+
+    await userEvent.click(within(screen.getByRole('navigation')).getByRole('button', { name: /my reports/i }));
+    expect(await screen.findByRole('heading', { name: 'My archived report' })).toBeInTheDocument();
+    await waitFor(() => expect(accountFetch.leadCounts).toHaveBeenCalledWith(['old-owned']));
+    await userEvent.click(await screen.findByRole('button', { name: /view leads/i }));
+
+    expect(await screen.findByRole('heading', { name: 'Private leads' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'My archived report' })).toBeInTheDocument();
   });
 
   it('View leads opens the private inbox and focuses its heading', async () => {

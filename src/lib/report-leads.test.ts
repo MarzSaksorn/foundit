@@ -15,12 +15,18 @@ const mockClient = vi.hoisted(() => {
 });
 vi.mock('./supabase', () => ({ supabase: mockClient }));
 
-import { createReportLead, fetchReportLeadCounts, fetchReportLeads } from './live-reports';
+import { createReportLead, fetchOwnLiveReports, fetchReportLeadCounts, fetchReportLeads } from './live-reports';
 
 const columns = 'id, report_id, submitted_by, message, sighting_location, created_at';
 const row = {
   id: 'lead-1', report_id: 'report-1', submitted_by: 'user-1', message: 'Saw the item near the library',
   sighting_location: 'Library', created_at: '2026-11-19T10:00:00Z',
+};
+const ownReportRow = {
+  id: 'report-1', report_type: 'missing' as const, title: 'Blue backpack', category: 'Accessories',
+  description: 'A report created by the signed-in member.', last_seen_at: null, found_at: null,
+  location_text: 'Library', photo_path: null, status: 'archived' as const, created_by: 'member-1',
+  created_at: '2026-11-19T10:00:00Z', storage_locations: null,
 };
 
 describe('report lead service', () => {
@@ -137,5 +143,27 @@ describe('report lead service', () => {
     mockClient.range.mockResolvedValue({ data: null, error });
 
     await expect(fetchReportLeadCounts(['report-1'])).rejects.toBe(error);
+  });
+});
+
+describe('owned live report service', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('paginates owner-scoped reports beyond 200 rows', async () => {
+    const firstPage = Array.from({ length: 200 }, (_, index) => ({ ...ownReportRow, id: `report-${index}` }));
+    mockClient.range
+      .mockResolvedValueOnce({ data: firstPage, error: null })
+      .mockResolvedValueOnce({ data: [{ ...ownReportRow, id: 'report-200' }], error: null });
+
+    const reports = await fetchOwnLiveReports('member-1');
+
+    expect(reports).toHaveLength(201);
+    expect(reports[200]?.id).toBe('report-200');
+    expect(reports.every((report) => report.createdById === 'member-1')).toBe(true);
+    expect(mockClient.from).toHaveBeenCalledWith('reports');
+    expect(mockClient.eq).toHaveBeenCalledWith('created_by', 'member-1');
+    expect(mockClient.order).toHaveBeenCalledWith('created_at', { ascending: false });
+    expect(mockClient.range).toHaveBeenNthCalledWith(1, 0, 199);
+    expect(mockClient.range).toHaveBeenNthCalledWith(2, 200, 399);
   });
 });

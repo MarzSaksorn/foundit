@@ -7,7 +7,6 @@ import { compressImageForUpload } from './lib/image-compression';
 import {
   categories,
   filterReports,
-  getReportById,
   initialReports,
   locations,
   statusLabel,
@@ -21,6 +20,7 @@ import {
   createReport,
   fetchCurrentProfile,
   fetchLiveReports,
+  fetchOwnLiveReports,
   fetchReportLeadCounts,
   fetchModerationHistory,
   fetchOwnClaims,
@@ -232,6 +232,8 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
   const [accountError, setAccountError] = useState<string | null>(null);
   const [notificationEntryPending, setNotificationEntryPending] = useState(false);
   const [reports, setReports] = useState<Report[]>(isSupabaseConfigured ? [] : initialReports);
+  const [ownLiveReports, setOwnLiveReports] = useState<Report[]>([]);
+  const [ownLiveReportsError, setOwnLiveReportsError] = useState(false);
   const [reportsLoading, setReportsLoading] = useState(isSupabaseConfigured);
   const [reportsError, setReportsError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -262,9 +264,12 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
 
   const canModerate = !isSupabaseConfigured || ['teacher', 'moderator', 'admin'].includes(profileRole || '');
   const filteredReports = useMemo(() => filterReports(reports, filters).filter((report) => filters.status === 'all' ? ['approved', 'claimed'].includes(report.status) : report.status === filters.status), [reports, filters]);
-  const myReports = useMemo(() => reports.filter((report) => user && report.createdById === user.id), [reports, user?.id]);
+  const myReports = useMemo(() => {
+    const sourceReports = isSupabaseConfigured ? ownLiveReports : reports;
+    return sourceReports.filter((report) => user && report.createdById === user.id);
+  }, [ownLiveReports, reports, user?.id]);
   const myMissingReportIds = useMemo(() => myReports.filter((report) => report.type === 'missing').map((report) => report.id), [myReports]);
-  const selectedReport = selectedId ? getReportById(reports, selectedId) : undefined;
+  const selectedReport = selectedId ? reports.find((report) => report.id === selectedId) || myReports.find((report) => report.id === selectedId) : undefined;
   const pendingCount = canModerate ? reports.filter((report) => report.status === 'pending').length : 0;
   const claimCount = canModerate ? teacherClaims.length : 0;
 
@@ -298,12 +303,22 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
         fetchStorageLocations(),
         fetchOwnClaims(user.id),
       ]);
+      let nextOwnLiveReports: Report[] = [];
+      let ownReportsFailed = false;
+      try {
+        nextOwnLiveReports = await fetchOwnLiveReports(user.id);
+      } catch (error) {
+        if (isUnauthorizedSupabaseError(error)) throw error;
+        ownReportsFailed = true;
+      }
       const teacher = Boolean(profile && ['teacher', 'moderator', 'admin'].includes(profile.role));
       const nextTeacherClaims = teacher ? await fetchTeacherClaims() : [];
       if (!active) return;
       setProfileRole(profile?.role || null);
       setSchoolId(profile?.school_id || null);
       setReports(nextReports);
+      setOwnLiveReports(nextOwnLiveReports);
+      setOwnLiveReportsError(ownReportsFailed);
       setStorageLocations(nextLocations);
       setOwnClaims(nextOwnClaims);
       setTeacherClaims(nextTeacherClaims);
@@ -521,8 +536,8 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
         {view === 'board' && !selectedReport && !reportsLoading && reportsError && <BoardError onRetry={() => setReloadKey((key) => key + 1)} />}
         {view === 'board' && !selectedReport && !reportsLoading && !reportsError && <BoardView reports={filteredReports} myReports={myReports} total={reports.filter((report) => ['approved', 'claimed'].includes(report.status)).length} filters={filters} updateFilter={updateFilter} onOpenReport={openReport} onOpenComposer={openComposer} />}
         {view === 'my-reports' && user && !selectedReport && reportsLoading && <BoardLoading />}
-        {view === 'my-reports' && user && !selectedReport && !reportsLoading && reportsError && <BoardError onRetry={() => setReloadKey((key) => key + 1)} />}
-        {view === 'my-reports' && user && !selectedReport && !reportsLoading && !reportsError && <MyReportsView reports={myReports} leadCounts={leadCounts} leadCountsState={leadCountsState} onOpenReport={openReport} onCreateReport={openComposer} />}
+        {view === 'my-reports' && user && !selectedReport && !reportsLoading && (reportsError || ownLiveReportsError) && <BoardError onRetry={() => setReloadKey((key) => key + 1)} />}
+        {view === 'my-reports' && user && !selectedReport && !reportsLoading && !reportsError && !ownLiveReportsError && <MyReportsView reports={myReports} leadCounts={leadCounts} leadCountsState={leadCountsState} onOpenReport={openReport} onCreateReport={openComposer} />}
         {view === 'moderation' && canModerate && !selectedReport && <ModerationView reports={reports} claims={teacherClaims} viewerRole={profileRole || 'teacher'} onOpenReport={openReport} onDecideReport={decideReport} onDecideClaim={decideClaim} />}
         {selectedReport && <ReportDetail key={`${selectedReport.id}-${leadInboxRefresh}`} report={selectedReport} claim={ownClaims.find((claim) => claim.report_id === selectedReport.id)} canModerate={canModerate} viewerId={user?.id} demoMode={!isSupabaseConfigured} demoLeads={demoLeads.filter((lead) => lead.report_id === selectedReport.id)} focusLeadInbox={focusLeadInbox} returnToMyReports={returnToMyReports} onOpenLead={() => setLeadModalOpen(true)} onBack={() => { setSelectedId(null); setFocusLeadInbox(false); setReturnToMyReports(false); }} onClaim={() => setClaimOpen(true)} onRequestReturn={() => setReturnConfirm(selectedReport)} showToast={showToast} />}
       </main>
