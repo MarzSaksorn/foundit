@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { User } from '@supabase/supabase-js';
 
 const accountFetch = vi.hoisted(() => ({
@@ -10,6 +10,17 @@ const accountFetch = vi.hoisted(() => ({
   reports: vi.fn(),
   claims: vi.fn(),
   requests: vi.fn(),
+  liveReports: vi.fn(),
+  storageLocations: vi.fn(),
+  liveClaims: vi.fn(),
+  teacherClaims: vi.fn(),
+  leadCounts: vi.fn(),
+  leadMessages: vi.fn(),
+}));
+
+const liveTestRuntime = vi.hoisted(() => ({
+  enabled: false,
+  client: { auth: { refreshSession: vi.fn(), signOut: vi.fn() } },
 }));
 
 vi.mock('./lib/account-settings', () => ({
@@ -23,13 +34,27 @@ vi.mock('./lib/account-settings', () => ({
   markNotificationRead: vi.fn(),
   submitDeletionRequest: vi.fn(),
 }));
+vi.mock('./lib/supabase', () => ({
+  get isSupabaseConfigured() { return liveTestRuntime.enabled; },
+  get supabase() { return liveTestRuntime.enabled ? liveTestRuntime.client : null; },
+}));
 vi.mock('./lib/live-reports', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./lib/live-reports')>();
-  return { ...actual, fetchCurrentProfile: accountFetch.profile };
+  return {
+    ...actual,
+    fetchCurrentProfile: accountFetch.profile,
+    fetchLiveReports: accountFetch.liveReports,
+    fetchStorageLocations: accountFetch.storageLocations,
+    fetchOwnClaims: accountFetch.liveClaims,
+    fetchTeacherClaims: accountFetch.teacherClaims,
+    fetchReportLeadCounts: accountFetch.leadCounts,
+    fetchReportLeads: accountFetch.leadMessages,
+  };
 });
 
 import { AppShell } from './App';
 import { setLanguage } from './lib/i18n';
+import type { Report } from './lib/reports';
 
 const member = { id: 'member-1', email: 'niran@example.org', user_metadata: { full_name: 'Niran' } } as unknown as User;
 const profile = { id: member.id, school_id: 'phichai-school', role: 'student' as const };
@@ -41,6 +66,36 @@ function configureSuccessfulLoad() {
   accountFetch.reports.mockResolvedValue([]);
   accountFetch.claims.mockResolvedValue([]);
   accountFetch.requests.mockResolvedValue([]);
+}
+
+function makeLiveReport(overrides: Partial<Report> & Pick<Report, 'id' | 'title'>): Report {
+  return {
+    id: overrides.id,
+    type: 'missing',
+    title: overrides.title,
+    category: 'School supplies',
+    description: 'A school report for integration testing.',
+    dateLabel: 'Last seen today',
+    location: 'Library',
+    status: 'approved',
+    ageDays: 0,
+    createdLabel: 'Today',
+    createdBy: 'Niran',
+    createdById: member.id,
+    initials: 'NI',
+    ...overrides,
+  };
+}
+
+function configureLiveReportLoad(reports: Report[], leadCounts: Record<string, number> = {}) {
+  liveTestRuntime.enabled = true;
+  accountFetch.profile.mockResolvedValue(profile);
+  accountFetch.liveReports.mockResolvedValue(reports);
+  accountFetch.storageLocations.mockResolvedValue([]);
+  accountFetch.liveClaims.mockResolvedValue([]);
+  accountFetch.teacherClaims.mockResolvedValue([]);
+  accountFetch.leadCounts.mockResolvedValue(leadCounts);
+  accountFetch.leadMessages.mockResolvedValue([]);
 }
 
 describe('member account navigation and initial load', () => {
@@ -166,6 +221,108 @@ describe('report composer accessibility', () => {
     }
 
     expect(reachedFileChooser).toBe(true);
+  });
+});
+
+describe('My Reports AppShell integration', () => {
+  beforeEach(() => {
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    cleanup();
+    setLanguage('en');
+    liveTestRuntime.enabled = false;
+    vi.clearAllMocks();
+    vi.restoreAllMocks();
+  });
+
+  it('signed-in navigation opens My Reports and marks it current', async () => {
+    configureLiveReportLoad([makeLiveReport({ id: 'mine-1', title: 'My red notebook' })]);
+    render(<AppShell user={member} />);
+
+    const navigation = within(screen.getByRole('navigation'));
+    const myReports = navigation.getByRole('button', { name: /my reports/i });
+    await userEvent.click(myReports);
+
+    expect(await screen.findByRole('heading', { name: 'My Reports' })).toBeVisible();
+    expect(myReports).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('My Reports lists only reports whose createdById matches the signed-in user', async () => {
+    const ownMissing = makeLiveReport({ id: 'mine-2', title: 'My red notebook' });
+    const ownFound = makeLiveReport({ id: 'mine-3', title: 'My found umbrella', type: 'found', status: 'pending' });
+    const otherMemberReport = makeLiveReport({ id: 'theirs-1', title: 'Someone else’s wallet', createdById: 'member-2' });
+    configureLiveReportLoad([ownMissing, ownFound, otherMemberReport], { 'mine-2': 1 });
+    render(<AppShell user={member} />);
+
+    await userEvent.click(within(screen.getByRole('navigation')).getByRole('button', { name: /my reports/i }));
+
+    expect(await screen.findByRole('heading', { name: 'My Reports' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'My red notebook' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'My found umbrella' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Someone else’s wallet' })).not.toBeInTheDocument();
+    await waitFor(() => expect(accountFetch.leadCounts).toHaveBeenCalledWith(['mine-2']));
+  });
+
+  it('View leads opens the private inbox and focuses its heading', async () => {
+    const ownReport = makeLiveReport({ id: 'mine-with-lead', title: 'My green backpack' });
+    configureLiveReportLoad([ownReport], { 'mine-with-lead': 1 });
+    render(<AppShell user={member} />);
+
+    await userEvent.click(within(screen.getByRole('navigation')).getByRole('button', { name: /my reports/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /view leads/i }));
+
+    const inboxHeading = await screen.findByRole('heading', { name: 'Private leads' });
+    await waitFor(() => expect(inboxHeading).toHaveFocus());
+  });
+
+  it('Back from a lead inbox returns to My Reports', async () => {
+    const ownReport = makeLiveReport({ id: 'mine-return', title: 'My blue folder' });
+    configureLiveReportLoad([ownReport], { 'mine-return': 1 });
+    render(<AppShell user={member} />);
+
+    await userEvent.click(within(screen.getByRole('navigation')).getByRole('button', { name: /my reports/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /view leads/i }));
+    expect(await screen.findByRole('heading', { name: 'Private leads' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /back to my reports/i }));
+
+    expect(await screen.findByRole('heading', { name: 'My Reports' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'My blue folder' })).toBeInTheDocument();
+  });
+
+  it('lead-count fetch failure leaves My Reports and report links available', async () => {
+    const ownReport = makeLiveReport({ id: 'mine-error', title: 'My yellow pencil case' });
+    configureLiveReportLoad([ownReport]);
+    accountFetch.leadCounts.mockRejectedValue(new Error('lead count service unavailable'));
+    render(<AppShell user={member} />);
+
+    await userEvent.click(within(screen.getByRole('navigation')).getByRole('button', { name: /my reports/i }));
+    expect(await screen.findByRole('heading', { name: 'My Reports' })).toBeVisible();
+    expect(await screen.findByText('Lead count unavailable')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Open report' }));
+
+    expect(await screen.findByRole('heading', { name: 'My yellow pencil case' })).toBeInTheDocument();
+  });
+
+  it('skips lead-count lookup when the member has no missing reports', async () => {
+    configureLiveReportLoad([makeLiveReport({ id: 'mine-found-only', title: 'My found umbrella', type: 'found' })]);
+    render(<AppShell user={member} />);
+
+    await userEvent.click(within(screen.getByRole('navigation')).getByRole('button', { name: /my reports/i }));
+
+    expect(await screen.findByRole('heading', { name: 'My found umbrella' })).toBeInTheDocument();
+    expect(accountFetch.leadCounts).not.toHaveBeenCalled();
+  });
+
+  it('signed-out visitors do not see the My Reports navigation entry', async () => {
+    configureLiveReportLoad([makeLiveReport({ id: 'mine-signed-out', title: 'My signed-in report' })]);
+    const { unmount } = render(<AppShell user={member} />);
+    expect(within(screen.getByRole('navigation')).getByRole('button', { name: /my reports/i })).toBeInTheDocument();
+    unmount();
+    render(<AppShell />);
+
+    expect(within(screen.getByRole('navigation')).queryByRole('button', { name: /my reports/i })).not.toBeInTheDocument();
   });
 });
 

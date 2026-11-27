@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@heroui/react';
 import { fetchReportLeads, type ReportLead } from '../lib/live-reports';
 import { useI18n } from '../lib/i18n';
 
-export type ReportLeadInboxProps = { reportId: string; demoLeads?: ReportLead[] };
+export type ReportLeadInboxProps = { reportId: string; demoLeads?: ReportLead[]; focusOnMount?: boolean };
 
-export function ReportLeadInbox({ reportId, demoLeads }: ReportLeadInboxProps) {
+export function ReportLeadInbox({ reportId, demoLeads, focusOnMount = false }: ReportLeadInboxProps) {
   const { language, t } = useI18n();
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const isDemo = demoLeads !== undefined;
   const [leads, setLeads] = useState<ReportLead[]>(demoLeads ?? []);
   const [loading, setLoading] = useState(!isDemo);
@@ -32,8 +33,9 @@ export function ReportLeadInbox({ reportId, demoLeads }: ReportLeadInboxProps) {
   }, [attempt, demoLeads, isDemo, reportId]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if (focusOnMount) headingRef.current?.focus(); }, [focusOnMount, reportId]);
   return <section className="report-lead-inbox" aria-labelledby="report-lead-inbox-heading">
-    <div className="report-lead-inbox-heading"><h2 id="report-lead-inbox-heading">{t('Private leads')}</h2>{!loading && !error && leads.length > 0 && <span className="report-lead-count">{leads.length}</span>}</div>
+    <div className="report-lead-inbox-heading"><h2 id="report-lead-inbox-heading" ref={headingRef} tabIndex={-1}>{t('Private leads')}</h2>{!loading && !error && leads.length > 0 && <span className="report-lead-count">{leads.length}</span>}</div>
     {loading && <p role="status" className="report-lead-state">{t('Loading private leads…')}</p>}
     {error && <div className="report-lead-state" role="alert"><p>{t('Unable to load private leads.')}</p><Button className="button secondary" variant="secondary" size="sm" onPress={() => setAttempt((value) => value + 1)}>{t('Try again')}</Button></div>}
     {!loading && !error && leads.length === 0 && <p className="report-lead-state">{t('No private leads yet.')}</p>}

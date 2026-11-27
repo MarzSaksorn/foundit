@@ -21,6 +21,7 @@ import {
   createReport,
   fetchCurrentProfile,
   fetchLiveReports,
+  fetchReportLeadCounts,
   fetchModerationHistory,
   fetchOwnClaims,
   fetchStorageLocations,
@@ -39,6 +40,7 @@ import { isSupabaseConfigured, supabase } from './lib/supabase';
 import { restoreLanguageForUser, setAuthenticatedUserId, setLanguage, t, useI18n } from './lib/i18n';
 import LeadModal from './components/LeadModal';
 import ReportLeadInbox from './components/ReportLeadInbox';
+import MyReportsView from './components/MyReportsView';
 import { createReportLead, type NewReportLeadInput, type ReportLead } from './lib/live-reports';
 import { canSubmitReportLead, canViewReportLeadInbox } from './lib/lead-access';
 import AccountSettingsView from './components/AccountSettingsView';
@@ -46,7 +48,7 @@ import type { AccountSettingsViewProps } from './components/AccountSettingsView'
 import SchoolSettingsView from './components/SchoolSettingsView';
 import { fetchOwnAccountSettings, fetchOwnNotifications, fetchOwnReports, fetchOwnClaims as fetchAccountClaims, fetchOwnAccountRequests, fetchOwnDataExport, updateOwnAccountSettings, markNotificationRead, submitDeletionRequest, type AccountSettings, type AccountRequest, type FoundItNotification, type OwnReport, type OwnClaim as AccountClaim } from './lib/account-settings';
 
-type View = 'board' | 'moderation' | 'account' | 'school-settings';
+type View = 'board' | 'moderation' | 'my-reports' | 'account' | 'school-settings';
 type ToastTone = 'success' | 'error' | 'info';
 
 function currentLocalDateForInput() {
@@ -241,6 +243,10 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
   const [leadModalOpen, setLeadModalOpen] = useState(false);
   const [leadInboxRefresh, setLeadInboxRefresh] = useState(0);
   const [teacherClaims, setTeacherClaims] = useState<TeacherClaim[]>([]);
+  const [leadCounts, setLeadCounts] = useState<Record<string, number>>({});
+  const [leadCountsState, setLeadCountsState] = useState<'loading' | 'ready' | 'error'>('ready');
+  const [focusLeadInbox, setFocusLeadInbox] = useState(false);
+  const [returnToMyReports, setReturnToMyReports] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const reportListScrollY = useRef(0);
   const reportListView = useRef<View>('board');
@@ -257,6 +263,7 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
   const canModerate = !isSupabaseConfigured || ['teacher', 'moderator', 'admin'].includes(profileRole || '');
   const filteredReports = useMemo(() => filterReports(reports, filters).filter((report) => filters.status === 'all' ? ['approved', 'claimed'].includes(report.status) : report.status === filters.status), [reports, filters]);
   const myReports = useMemo(() => reports.filter((report) => user && report.createdById === user.id), [reports, user?.id]);
+  const myMissingReportIds = useMemo(() => myReports.filter((report) => report.type === 'missing').map((report) => report.id), [myReports]);
   const selectedReport = selectedId ? getReportById(reports, selectedId) : undefined;
   const pendingCount = canModerate ? reports.filter((report) => report.status === 'pending').length : 0;
   const claimCount = canModerate ? teacherClaims.length : 0;
@@ -342,6 +349,39 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
     return () => { active = false; };
   }, [user?.id, reloadKey, onSessionExpired]);
 
+  useEffect(() => {
+    if (view !== 'my-reports' || reportsLoading || reportsError) return;
+    let active = true;
+    setLeadCounts({});
+    if (myMissingReportIds.length === 0) {
+      setLeadCountsState('ready');
+      return () => { active = false; };
+    }
+    if (!user) {
+      setLeadCountsState('ready');
+      return () => { active = false; };
+    }
+    if (!isSupabaseConfigured) {
+      const demoCounts = Object.fromEntries(myMissingReportIds.map((reportId) => [reportId, demoLeads.filter((lead) => lead.report_id === reportId).length]));
+      setLeadCounts(demoCounts);
+      setLeadCountsState('ready');
+      return () => { active = false; };
+    }
+    setLeadCountsState('loading');
+    void fetchReportLeadCounts(myMissingReportIds)
+      .then((counts) => {
+        if (!active) return;
+        setLeadCounts(counts);
+        setLeadCountsState('ready');
+      })
+      .catch(() => {
+        if (!active) return;
+        setLeadCounts({});
+        setLeadCountsState('error');
+      });
+    return () => { active = false; };
+  }, [demoLeads, myMissingReportIds, reportsError, reportsLoading, user?.id, view]);
+
   const refreshAccount = useCallback(() => {
     if (!user) return;
     setAccountLoading(true); setAccountError(null);
@@ -412,9 +452,11 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
     setComposerOpen(true);
   };
 
-  const openReport = (id: string) => {
+  const openReport = (id: string, focusInbox = false) => {
     reportListScrollY.current = window.scrollY;
     reportListView.current = view;
+    setReturnToMyReports(view === 'my-reports');
+    setFocusLeadInbox(focusInbox);
     setSelectedId(id);
   };
 
@@ -436,6 +478,9 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
           </button>
           {canModerate && <button className={`nav-item ${view === 'moderation' ? 'active' : ''}`} onClick={() => { setView('moderation'); setSelectedId(null); }}>
             <Icon name="inbox" /> <span>{t('Moderation')}</span><span className="nav-count accent">{pendingCount + claimCount}</span>
+          </button>}
+          {user && <button type="button" className={`nav-item ${view === 'my-reports' ? 'active' : ''}`} aria-current={view === 'my-reports' ? 'page' : undefined} onClick={() => { setView('my-reports'); setSelectedId(null); }}>
+            <Icon name="inbox" /> <span>{t('My Reports')}</span>
           </button>}
           {user && <button type="button" className={`nav-item ${view === 'account' ? 'active' : ''}`} aria-current={view === 'account' ? 'page' : undefined} onClick={() => { setView('account'); setSelectedId(null); }}>
             <Icon name="settings" /> <span>{t('Your account')}</span>
@@ -464,7 +509,7 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
 
       <main className="main-content">
         <header className="topbar">
-          <div className="breadcrumbs"><span>Phichai School</span><span className="crumb-slash">/</span><strong>{view === 'account' ? t('Account settings') : view === 'school-settings' ? t('School settings') : view === 'board' ? t('Community board') : t('Teacher moderation')}</strong></div>
+          <div className="breadcrumbs"><span>Phichai School</span><span className="crumb-slash">/</span><strong>{view === 'account' ? t('Account settings') : view === 'school-settings' ? t('School settings') : view === 'my-reports' ? t('My Reports') : view === 'board' ? t('Community board') : t('Teacher moderation')}</strong></div>
           <div className="topbar-actions"><LanguageToggle language={language} />{user && <button type="button" className="help-button notification-entry" aria-label={t('Notifications')} title={t('Notifications')} onClick={() => { setNotificationEntryPending(true); setView('account'); setSelectedId(null); }}>{accountNotifications.some((item) => !item.read_at) ? '•' : '○'}</button>}<span className="saved-note"><span className="online-dot" />{isSupabaseConfigured ? t('Live Supabase data') : t('Seeded demo data')}</span><button className="help-button" aria-label={t('Help')}>?</button><span className="avatar mini" aria-hidden="true">{user ? (user.email?.slice(0, 2).toUpperCase() || 'PS') : 'MR'}</span></div>
         </header>
 
@@ -475,8 +520,11 @@ export function AppShell({ user, onSessionExpired }: { user?: User; onSessionExp
         {view === 'board' && !selectedReport && reportsLoading && <BoardLoading />}
         {view === 'board' && !selectedReport && !reportsLoading && reportsError && <BoardError onRetry={() => setReloadKey((key) => key + 1)} />}
         {view === 'board' && !selectedReport && !reportsLoading && !reportsError && <BoardView reports={filteredReports} myReports={myReports} total={reports.filter((report) => ['approved', 'claimed'].includes(report.status)).length} filters={filters} updateFilter={updateFilter} onOpenReport={openReport} onOpenComposer={openComposer} />}
+        {view === 'my-reports' && user && !selectedReport && reportsLoading && <BoardLoading />}
+        {view === 'my-reports' && user && !selectedReport && !reportsLoading && reportsError && <BoardError onRetry={() => setReloadKey((key) => key + 1)} />}
+        {view === 'my-reports' && user && !selectedReport && !reportsLoading && !reportsError && <MyReportsView reports={myReports} leadCounts={leadCounts} leadCountsState={leadCountsState} onOpenReport={openReport} onCreateReport={openComposer} />}
         {view === 'moderation' && canModerate && !selectedReport && <ModerationView reports={reports} claims={teacherClaims} viewerRole={profileRole || 'teacher'} onOpenReport={openReport} onDecideReport={decideReport} onDecideClaim={decideClaim} />}
-        {selectedReport && <ReportDetail key={`${selectedReport.id}-${leadInboxRefresh}`} report={selectedReport} claim={ownClaims.find((claim) => claim.report_id === selectedReport.id)} canModerate={canModerate} viewerId={user?.id} demoMode={!isSupabaseConfigured} demoLeads={demoLeads.filter((lead) => lead.report_id === selectedReport.id)} onOpenLead={() => setLeadModalOpen(true)} onBack={() => setSelectedId(null)} onClaim={() => setClaimOpen(true)} onRequestReturn={() => setReturnConfirm(selectedReport)} showToast={showToast} />}
+        {selectedReport && <ReportDetail key={`${selectedReport.id}-${leadInboxRefresh}`} report={selectedReport} claim={ownClaims.find((claim) => claim.report_id === selectedReport.id)} canModerate={canModerate} viewerId={user?.id} demoMode={!isSupabaseConfigured} demoLeads={demoLeads.filter((lead) => lead.report_id === selectedReport.id)} focusLeadInbox={focusLeadInbox} returnToMyReports={returnToMyReports} onOpenLead={() => setLeadModalOpen(true)} onBack={() => { setSelectedId(null); setFocusLeadInbox(false); setReturnToMyReports(false); }} onClaim={() => setClaimOpen(true)} onRequestReturn={() => setReturnConfirm(selectedReport)} showToast={showToast} />}
       </main>
 
       {composerOpen && <ReportComposer type={composerType} storageLocations={storageLocations} onClose={() => setComposerOpen(false)} onPhotoToast={showToast} onSubmitted={async (input) => {
@@ -613,7 +661,7 @@ function EmptyState({ onClear }: { onClear: () => void }) {
   return <div className="empty-state"><div className="empty-pin"><Icon name="search" size={25} /></div><h3>{t('No reports match that search.')}</h3><p>{t('Try a wider search or clear your filters to see the full board.')}</p><Button className="button secondary" variant="secondary" size="sm" onPress={onClear}>{t('Clear filters')}</Button></div>;
 }
 
-function ReportDetail({ report, claim, canModerate, viewerId, demoMode, demoLeads, onOpenLead, onBack, onClaim, onRequestReturn, showToast }: { report: Report; claim?: OwnClaim; canModerate: boolean; viewerId?: string; demoMode: boolean; demoLeads: ReportLead[]; onOpenLead: () => void; onBack: () => void; onClaim: () => void; onRequestReturn: () => void; showToast: (message: string) => void }) {
+function ReportDetail({ report, claim, canModerate, viewerId, demoMode, demoLeads, focusLeadInbox, returnToMyReports, onOpenLead, onBack, onClaim, onRequestReturn, showToast }: { report: Report; claim?: OwnClaim; canModerate: boolean; viewerId?: string; demoMode: boolean; demoLeads: ReportLead[]; focusLeadInbox: boolean; returnToMyReports: boolean; onOpenLead: () => void; onBack: () => void; onClaim: () => void; onRequestReturn: () => void; showToast: (message: string) => void }) {
   const isFound = report.type === 'found';
   const canSendLead = canSubmitReportLead(report, viewerId, demoMode);
   const canViewLeads = canViewReportLeadInbox(report, viewerId, canModerate, demoMode);
@@ -621,7 +669,7 @@ function ReportDetail({ report, claim, canModerate, viewerId, demoMode, demoLead
   const canClaim = isFound && report.status === 'approved' && !claimPending;
   const claimLabel = claim?.status === 'approved' ? 'Claim approved' : claim?.status === 'rejected' ? 'Claim declined' : claim?.status === 'needs_more_information' ? 'More information requested' : 'Claim submitted';
   return <section className="detail-page">
-    <button className="back-link" onClick={onBack}><span>←</span> {t('Back to board')}</button>
+    <button className="back-link" onClick={onBack}><span>←</span> {t(returnToMyReports ? 'Back to My Reports' : 'Back to board')}</button>
     <div className="detail-layout">
       <div className="detail-main">
         <ReportArtwork report={report} detail />
@@ -630,7 +678,7 @@ function ReportDetail({ report, claim, canModerate, viewerId, demoMode, demoLead
         <div className="detail-facts"><div><span>{t(isFound ? 'Found' : 'Last seen')}</span><strong>{report.dateLabel.replace('Found ', '').replace('Last seen ', '')}</strong></div><div><span>{t('Location')}</span><strong>{t(report.location)}</strong></div><div><span>{isFound ? t('Stored at') : t('Reported by')}</span><strong>{isFound ? (report.storageLocation ? t(report.storageLocation) : '') : report.createdBy}</strong></div></div>
         <div className="privacy-box"><div className="privacy-icon"><Icon name="lock" size={17} /></div><div><strong>{t('Keep identifying details private')}</strong><p>{t('Claims are only shared with the teacher reviewing this report. Don’t add passwords, codes, or full card numbers.')}</p></div></div>
         {canModerate && <ModerationHistory key={`${report.id}-${report.status}`} reportId={report.id} />}
-        {canViewLeads && <ReportLeadInbox key={`${report.id}-${demoLeads.length}`} reportId={report.id} {...(demoMode ? { demoLeads } : {})} />}
+        {canViewLeads && <ReportLeadInbox key={`${report.id}-${demoLeads.length}`} reportId={report.id} focusOnMount={focusLeadInbox} {...(demoMode ? { demoLeads } : {})} />}
       </div>
       <aside className="detail-side">
         <div className="side-card next-step"><div className="side-card-label">{t('Next step')}</div><h3>{t(isFound ? 'Could this be yours?' : 'Have you seen this item?')}</h3><p>{t(isFound ? 'Share one private detail only the owner would know. A teacher will review it.' : 'Let the reporter know if you found a lead or spotted this item around school.')}</p>{isFound ? <Button className="button primary full" variant="primary" isDisabled={!canClaim} onPress={canClaim ? onClaim : undefined}>{claim ? t(claimLabel) : report.status === 'claimed' ? t('Claim already approved') : t('Claim this item')} <Icon name="arrow" size={15} /></Button> : canSendLead ? <Button className="button primary full" variant="primary" onPress={onOpenLead}>{t('Share a lead')} <Icon name="arrow" size={15} /></Button> : <p className="lead-cta-help">{t('This report is not accepting leads.')}</p>}{claim && <p className="claim-status-note">{t('Claim status')}: {t(claim.status)}</p>}</div>
