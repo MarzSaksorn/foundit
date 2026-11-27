@@ -133,3 +133,38 @@ describe('member account navigation and initial load', () => {
     await waitFor(() => expect(heading).toHaveFocus());
   });
 });
+
+describe('report composer accessibility', () => {
+  afterEach(() => {
+    cleanup();
+    setLanguage('en');
+  });
+
+  it('uses the Thai found-report translation in the dialog title', async () => {
+    setLanguage('th');
+    render(<AppShell />);
+
+    await userEvent.click(within(screen.getByRole('complementary')).getByRole('button', { name: 'แจ้งของที่พบ' }));
+
+    await waitFor(() => expect(document.querySelector('.composer-modal h2')).toBeInTheDocument());
+    expect(document.querySelector('.composer-modal h2')).toHaveTextContent('แจ้งของที่พบ');
+  });
+
+  it('keeps the photo file chooser reachable by keyboard', async () => {
+    render(<AppShell />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /report something found/i }));
+
+    const fileChooser = screen.getByLabelText(/choose file/i);
+    let reachedFileChooser = false;
+    for (let tabCount = 0; tabCount < 20; tabCount += 1) {
+      await user.tab();
+      if (document.activeElement === fileChooser) {
+        reachedFileChooser = true;
+        break;
+      }
+    }
+
+    expect(reachedFileChooser).toBe(true);
+  });
+});
